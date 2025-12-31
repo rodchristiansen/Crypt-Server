@@ -1,0 +1,32 @@
+{{define "title"}}Edit User{{end}}
+
+{{define "content"}}
+<div class="row">
+  <div class="col-md-6">
+    <h2>Edit User</h2>
+    {{if .ErrorMessage}}
+      <div class="alert alert-danger">{{.ErrorMessage}}</div>
+    {{end}}
+    <form method="post" action="/admin/users/{{.AdminUser.ID}}/edit/">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" class="form-control" value="{{.NewUser.Username}}" />
+      </div>
+      <div class="form-check">
+        <input id="is_staff" name="is_staff" type="checkbox" class="form-check-input" {{if .NewUser.IsStaff}}checked{{end}} />
+        <label class="form-check-label" for="is_staff">Staff user</label>
+      </div>
+      <div class="form-check">
+        <input id="can_approve" name="can_approve" type="checkbox" class="form-check-input" {{if .NewUser.CanApprove}}checked{{end}} />
+        <label class="form-check-label" for="can_approve">Can approve requests</label>
+      </div>
+      <div class="form-check">
+        <input id="has_usable_password" name="has_usable_password" type="checkbox" class="form-check-input" {{if .NewUser.HasUsablePassword}}checked{{end}} />
+        <label class="form-check-label" for="has_usable_password">Local login enabled</label>
+      </div>
+      <button class="btn btn-primary mt-3" type="submit">Save Changes</button>
+      <a class="btn btn-outline-secondary mt-3" href="/admin/users/">Back</a>
+    </form>
+  </div>
+</div>
+{{end}}

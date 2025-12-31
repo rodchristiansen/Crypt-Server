@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypt-server/internal/store"
 	"encoding/json"
 	"errors"
@@ -297,7 +298,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		user := s.currentUser(r)
 		var approved *bool
 		var approver string
-		if user.CanApprove {
+		if user.CanApprove && s.settings.ApproveOwn {
 			approvedValue := true
 			approved = &approvedValue
 			approver = user.Username
@@ -340,11 +341,19 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
+		if !s.canApproveRequest(r, req) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		data := TemplateData{Title: "Approve Request", User: s.currentUser(r), Request: req, Secret: secret, Computer: computer}
 		if err := s.renderer.Render(w, "approve", data); err != nil {
 			s.renderError(w, err)
 		}
 	case http.MethodPost:
+		if !s.canApproveRequest(r, req) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		if err := r.ParseForm(); err != nil {
 			s.renderError(w, err)
 			return
@@ -371,6 +380,15 @@ func (s *Server) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 	req, err := s.store.GetRequestByID(requestID)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if req.Approved == nil || !*req.Approved {
+		http.Error(w, "request not approved", http.StatusForbidden)
+		return
+	}
+	user := s.currentUser(r)
+	if user.Username != req.RequestingUser && !user.CanApprove {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -411,6 +429,10 @@ func (s *Server) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleManageRequests(w http.ResponseWriter, r *http.Request) {
+	if !s.currentUser(r).CanApprove {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	requests, err := s.store.ListOutstandingRequests()
 	if err != nil {
 		s.renderError(w, err)
@@ -441,14 +463,359 @@ func (s *Server) handleManageRequests(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	data := TemplateData{Title: "Login", User: s.currentUser(r)}
-	if err := s.renderer.Render(w, "login", data); err != nil {
+func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/admin/users/" {
+		s.handleUserList(w, r)
+		return
+	}
+	if r.URL.Path == "/admin/users/new/" {
+		s.handleNewUser(w, r)
+		return
+	}
+	if strings.HasSuffix(r.URL.Path, "/edit/") {
+		s.handleUserEdit(w, r)
+		return
+	}
+	if strings.HasSuffix(r.URL.Path, "/password/") {
+		s.handleUserPassword(w, r)
+		return
+	}
+	if strings.HasSuffix(r.URL.Path, "/delete/") {
+		s.handleUserDelete(w, r)
+		return
+	}
+	http.NotFound(w, r)
+}
+
+func (s *Server) handleUserList(w http.ResponseWriter, r *http.Request) {
+	if !s.currentUser(r).IsStaff {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	users, err := s.store.ListUsers()
+	if err != nil {
+		s.renderError(w, err)
+		return
+	}
+	data := TemplateData{Title: "Users", User: s.currentUser(r), Users: users}
+	if err := s.renderer.Render(w, "user_list", data); err != nil {
 		s.renderError(w, err)
 	}
 }
 
+func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
+	if !s.currentUser(r).IsStaff {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		data := TemplateData{
+			Title: "New User",
+			User:  s.currentUser(r),
+			NewUser: UserForm{
+				HasUsablePassword: true,
+			},
+		}
+		if err := s.renderer.Render(w, "user_new", data); err != nil {
+			s.renderError(w, err)
+		}
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		username := strings.TrimSpace(r.FormValue("username"))
+		password := r.FormValue("password")
+		isStaff := r.FormValue("is_staff") == "on"
+		canApprove := r.FormValue("can_approve") == "on"
+		hasPassword := r.FormValue("has_usable_password") == "on"
+		if username == "" || (hasPassword && password == "") {
+			data := TemplateData{
+				Title:        "New User",
+				User:         s.currentUser(r),
+				ErrorMessage: "Username and password are required when local login is enabled.",
+				NewUser: UserForm{
+					Username:          username,
+					IsStaff:           isStaff,
+					CanApprove:        canApprove,
+					HasUsablePassword: hasPassword,
+				},
+			}
+			if err := s.renderer.Render(w, "user_new", data); err != nil {
+				s.renderError(w, err)
+			}
+			return
+		}
+		if _, err := s.store.GetUserByUsername(username); err == nil {
+			data := TemplateData{
+				Title:        "New User",
+				User:         s.currentUser(r),
+				ErrorMessage: "Username already exists.",
+				NewUser: UserForm{
+					Username:          username,
+					IsStaff:           isStaff,
+					CanApprove:        canApprove,
+					HasUsablePassword: hasPassword,
+				},
+			}
+			if err := s.renderer.Render(w, "user_new", data); err != nil {
+				s.renderError(w, err)
+			}
+			return
+		} else if err != store.ErrNotFound {
+			s.renderError(w, err)
+			return
+		}
+		var passwordHash string
+		if hasPassword {
+			var err error
+			passwordHash, err = hashPassword(password)
+			if err != nil {
+				s.renderError(w, err)
+				return
+			}
+		}
+		if _, err := s.store.AddUser(username, passwordHash, isStaff, canApprove, hasPassword); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		http.Redirect(w, r, "/admin/users/", http.StatusSeeOther)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
+	if !s.currentUser(r).IsStaff {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	userID, err := idFromPath("/admin/users/", strings.TrimSuffix(r.URL.Path, "/edit/")+"/")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	user, err := s.store.GetUserByID(userID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		data := TemplateData{
+			Title:     "Edit User",
+			User:      s.currentUser(r),
+			AdminUser: user,
+			NewUser: UserForm{
+				Username:          user.Username,
+				IsStaff:           user.IsStaff,
+				CanApprove:        user.CanApprove,
+				HasUsablePassword: user.HasUsablePassword,
+			},
+		}
+		if err := s.renderer.Render(w, "user_edit", data); err != nil {
+			s.renderError(w, err)
+		}
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		username := strings.TrimSpace(r.FormValue("username"))
+		isStaff := r.FormValue("is_staff") == "on"
+		canApprove := r.FormValue("can_approve") == "on"
+		hasPassword := r.FormValue("has_usable_password") == "on"
+		if username == "" {
+			data := TemplateData{
+				Title:        "Edit User",
+				User:         s.currentUser(r),
+				AdminUser:    user,
+				ErrorMessage: "Username is required.",
+				NewUser: UserForm{
+					Username:          username,
+					IsStaff:           isStaff,
+					CanApprove:        canApprove,
+					HasUsablePassword: hasPassword,
+				},
+			}
+			if err := s.renderer.Render(w, "user_edit", data); err != nil {
+				s.renderError(w, err)
+			}
+			return
+		}
+		if existing, err := s.store.GetUserByUsername(username); err == nil && existing.ID != user.ID {
+			data := TemplateData{
+				Title:        "Edit User",
+				User:         s.currentUser(r),
+				AdminUser:    user,
+				ErrorMessage: "Username already exists.",
+				NewUser: UserForm{
+					Username:          username,
+					IsStaff:           isStaff,
+					CanApprove:        canApprove,
+					HasUsablePassword: hasPassword,
+				},
+			}
+			if err := s.renderer.Render(w, "user_edit", data); err != nil {
+				s.renderError(w, err)
+			}
+			return
+		} else if err != nil && err != store.ErrNotFound {
+			s.renderError(w, err)
+			return
+		}
+		updated, err := s.store.UpdateUser(user.ID, username, isStaff, canApprove, hasPassword)
+		if err != nil {
+			s.renderError(w, err)
+			return
+		}
+		http.Redirect(w, r, fmt.Sprintf("/admin/users/%d/edit/", updated.ID), http.StatusSeeOther)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
+	if !s.currentUser(r).IsStaff {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	userID, err := idFromPath("/admin/users/", strings.TrimSuffix(r.URL.Path, "/password/")+"/")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	user, err := s.store.GetUserByID(userID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		data := TemplateData{Title: "Reset Password", User: s.currentUser(r), AdminUser: user}
+		if err := s.renderer.Render(w, "user_password", data); err != nil {
+			s.renderError(w, err)
+		}
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		password := r.FormValue("password")
+		if password == "" {
+			data := TemplateData{
+				Title:        "Reset Password",
+				User:         s.currentUser(r),
+				AdminUser:    user,
+				ErrorMessage: "Password is required.",
+			}
+			if err := s.renderer.Render(w, "user_password", data); err != nil {
+				s.renderError(w, err)
+			}
+			return
+		}
+		passwordHash, err := hashPassword(password)
+		if err != nil {
+			s.renderError(w, err)
+			return
+		}
+		if _, err := s.store.UpdateUserPassword(user.ID, passwordHash, true); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		http.Redirect(w, r, fmt.Sprintf("/admin/users/%d/edit/", user.ID), http.StatusSeeOther)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
+	if !s.currentUser(r).IsStaff {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	userID, err := idFromPath("/admin/users/", strings.TrimSuffix(r.URL.Path, "/delete/")+"/")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	user, err := s.store.GetUserByID(userID)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		data := TemplateData{Title: "Delete User", User: s.currentUser(r), AdminUser: user}
+		if err := s.renderer.Render(w, "user_delete", data); err != nil {
+			s.renderError(w, err)
+		}
+	case http.MethodPost:
+		if s.currentUser(r).ID == user.ID {
+			data := TemplateData{
+				Title:        "Delete User",
+				User:         s.currentUser(r),
+				AdminUser:    user,
+				ErrorMessage: "You cannot delete your own account.",
+			}
+			if err := s.renderer.Render(w, "user_delete", data); err != nil {
+				s.renderError(w, err)
+			}
+			return
+		}
+		if err := s.store.DeleteUser(user.ID); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		http.Redirect(w, r, "/admin/users/", http.StatusSeeOther)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		data := TemplateData{Title: "Login", User: s.currentUser(r)}
+		if err := s.renderer.Render(w, "login", data); err != nil {
+			s.renderError(w, err)
+		}
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		username := strings.TrimSpace(r.FormValue("username"))
+		password := r.FormValue("password")
+		next := r.FormValue("next")
+
+		user, err := s.store.GetUserByUsername(username)
+		if err != nil || !user.HasUsablePassword || user.PasswordHash == "" {
+			s.renderLoginError(w, r, "Invalid username or password.")
+			return
+		}
+		if !verifyPassword(password, user.PasswordHash) {
+			s.renderLoginError(w, r, "Invalid username or password.")
+			return
+		}
+		token, err := s.sessionManager.Create(user.Username)
+		if err != nil {
+			s.renderError(w, err)
+			return
+		}
+		s.sessionManager.SetCookie(w, token, s.settings.CookieSecure)
+		if next == "" || !strings.HasPrefix(next, "/") {
+			next = "/"
+		}
+		http.Redirect(w, r, next, http.StatusSeeOther)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	s.sessionManager.ClearCookie(w, s.settings.CookieSecure)
 	http.Redirect(w, r, "/login/", http.StatusSeeOther)
 }
 
@@ -463,18 +830,26 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) currentUser(r *http.Request) User {
-	return User{
-		Username:          "admin",
-		IsAuthenticated:   true,
-		IsStaff:           true,
-		HasUsablePassword: true,
-		CanApprove:        true,
+	if user := userFromContext(r.Context()); user != nil {
+		return *user
 	}
+	return User{}
 }
 
 func (s *Server) renderError(w http.ResponseWriter, err error) {
 	s.logger.Printf("handler error: %v", err)
 	http.Error(w, "Something went wrong", http.StatusInternalServerError)
+}
+
+func (s *Server) renderLoginError(w http.ResponseWriter, r *http.Request, message string) {
+	data := TemplateData{
+		Title:        "Login",
+		User:         s.currentUser(r),
+		ErrorMessage: message,
+	}
+	if err := s.renderer.Render(w, "login", data); err != nil {
+		s.renderError(w, err)
+	}
 }
 
 func idFromPath(prefix, path string) (int, error) {
@@ -494,4 +869,58 @@ func (s *Server) lookupComputer(identifier string) (*store.Computer, error) {
 		return s.store.GetComputerByID(id)
 	}
 	return s.store.GetComputerBySerial(identifier)
+}
+
+func (s *Server) loadUserFromRequest(r *http.Request) *User {
+	if s.sessionManager == nil {
+		return nil
+	}
+	cookie, err := r.Cookie(s.sessionManager.CookieName())
+	if err != nil {
+		return nil
+	}
+	username, ok := s.sessionManager.Validate(cookie.Value)
+	if !ok {
+		return nil
+	}
+	dbUser, err := s.store.GetUserByUsername(username)
+	if err != nil {
+		return nil
+	}
+	user := mapStoreUser(dbUser)
+	user.IsAuthenticated = true
+	if s.settings.AllApprove {
+		user.CanApprove = true
+	}
+	return &user
+}
+
+func mapStoreUser(user *store.User) User {
+	return User{
+		ID:                user.ID,
+		Username:          user.Username,
+		IsStaff:           user.IsStaff,
+		HasUsablePassword: user.HasUsablePassword,
+		CanApprove:        user.CanApprove,
+	}
+}
+
+func userFromContext(ctx context.Context) *User {
+	if value := ctx.Value(userContextKey); value != nil {
+		if user, ok := value.(*User); ok {
+			return user
+		}
+	}
+	return nil
+}
+
+func (s *Server) canApproveRequest(r *http.Request, req *store.Request) bool {
+	user := s.currentUser(r)
+	if !user.CanApprove {
+		return false
+	}
+	if !s.settings.ApproveOwn && user.Username == req.RequestingUser {
+		return false
+	}
+	return true
 }

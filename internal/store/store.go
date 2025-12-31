@@ -23,4 +23,11 @@ type Store interface {
 	ListOutstandingRequests() ([]*Request, error)
 	GetRequestByID(id int) (*Request, error)
 	ApproveRequest(requestID int, approved bool, reason, approver string) (*Request, error)
+	AddUser(username, passwordHash string, isStaff, canApprove, hasUsablePassword bool) (*User, error)
+	GetUserByUsername(username string) (*User, error)
+	ListUsers() ([]*User, error)
+	GetUserByID(id int) (*User, error)
+	UpdateUser(id int, username string, isStaff, canApprove, hasUsablePassword bool) (*User, error)
+	UpdateUserPassword(id int, passwordHash string, hasUsablePassword bool) (*User, error)
+	DeleteUser(id int) error
 }

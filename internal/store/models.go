@@ -31,3 +31,12 @@ type Request struct {
 	DateApproved      *time.Time
 	Current           bool
 }
+
+type User struct {
+	ID                int
+	Username          string
+	PasswordHash      string
+	IsStaff           bool
+	CanApprove        bool
+	HasUsablePassword bool
+}

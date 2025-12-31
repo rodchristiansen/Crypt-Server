@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -13,9 +14,11 @@ type MemoryStore struct {
 	nextComputerID int
 	nextSecretID   int
 	nextRequestID  int
+	nextUserID     int
 	computers      map[int]*Computer
 	secrets        map[int]*Secret
 	requests       map[int]*Request
+	users          map[int]*User
 	codec          SecretCodec
 }
 
@@ -24,9 +27,11 @@ func NewMemoryStore(codec SecretCodec) *MemoryStore {
 		nextComputerID: 1,
 		nextSecretID:   1,
 		nextRequestID:  1,
+		nextUserID:     1,
 		computers:      make(map[int]*Computer),
 		secrets:        make(map[int]*Secret),
 		requests:       make(map[int]*Request),
+		users:          make(map[int]*User),
 		codec:          codec,
 	}
 }
@@ -232,6 +237,109 @@ func (s *MemoryStore) ApproveRequest(requestID int, approved bool, reason, appro
 	now := time.Now()
 	request.DateApproved = &now
 	return request, nil
+}
+
+func (s *MemoryStore) AddUser(username, passwordHash string, isStaff, canApprove, hasUsablePassword bool) (*User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, existing := range s.users {
+		if strings.EqualFold(existing.Username, username) {
+			return nil, errors.New("username already exists")
+		}
+	}
+	user := &User{
+		ID:                s.nextUserID,
+		Username:          username,
+		PasswordHash:      passwordHash,
+		IsStaff:           isStaff,
+		CanApprove:        canApprove,
+		HasUsablePassword: hasUsablePassword,
+	}
+	s.nextUserID++
+	s.users[user.ID] = user
+	return user, nil
+}
+
+func (s *MemoryStore) GetUserByUsername(username string) (*User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, user := range s.users {
+		if strings.EqualFold(user.Username, username) {
+			return user, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (s *MemoryStore) ListUsers() ([]*User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	users := make([]*User, 0, len(s.users))
+	for _, user := range s.users {
+		users = append(users, user)
+	}
+	sort.Slice(users, func(i, j int) bool {
+		return users[i].ID < users[j].ID
+	})
+	return users, nil
+}
+
+func (s *MemoryStore) GetUserByID(id int) (*User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	user, ok := s.users[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return user, nil
+}
+
+func (s *MemoryStore) UpdateUser(id int, username string, isStaff, canApprove, hasUsablePassword bool) (*User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	user, ok := s.users[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	for _, existing := range s.users {
+		if existing.ID != id && strings.EqualFold(existing.Username, username) {
+			return nil, errors.New("username already exists")
+		}
+	}
+	user.Username = username
+	user.IsStaff = isStaff
+	user.CanApprove = canApprove
+	user.HasUsablePassword = hasUsablePassword
+	return user, nil
+}
+
+func (s *MemoryStore) UpdateUserPassword(id int, passwordHash string, hasUsablePassword bool) (*User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	user, ok := s.users[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	user.PasswordHash = passwordHash
+	user.HasUsablePassword = hasUsablePassword
+	return user, nil
+}
+
+func (s *MemoryStore) DeleteUser(id int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.users[id]; !ok {
+		return ErrNotFound
+	}
+	delete(s.users, id)
+	return nil
 }
 
 func (s *MemoryStore) decryptSecret(secret *Secret) (*Secret, error) {

@@ -286,6 +286,148 @@ func (s *PostgresStore) ApproveRequest(requestID int, approved bool, reason, app
 	return updated, nil
 }
 
+func (s *PostgresStore) AddUser(username, passwordHash string, isStaff, canApprove, hasUsablePassword bool) (*User, error) {
+	var id int
+	err := s.db.QueryRow(
+		`INSERT INTO users (username, password_hash, is_staff, can_approve, has_usable_password)
+		 VALUES ($1, $2, $3, $4, $5)
+		 RETURNING id`,
+		username, nullableString(passwordHash), isStaff, canApprove, hasUsablePassword,
+	).Scan(&id)
+	if err != nil {
+		return nil, fmt.Errorf("insert user: %w", err)
+	}
+	return &User{
+		ID:                id,
+		Username:          username,
+		PasswordHash:      passwordHash,
+		IsStaff:           isStaff,
+		CanApprove:        canApprove,
+		HasUsablePassword: hasUsablePassword,
+	}, nil
+}
+
+func (s *PostgresStore) GetUserByUsername(username string) (*User, error) {
+	var user User
+	var passwordHash sql.NullString
+	row := s.db.QueryRow(
+		`SELECT id, username, password_hash, is_staff, can_approve, has_usable_password
+		 FROM users WHERE lower(username) = lower($1)`,
+		username,
+	)
+	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.HasUsablePassword); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get user by username: %w", err)
+	}
+	if passwordHash.Valid {
+		user.PasswordHash = passwordHash.String
+	}
+	return &user, nil
+}
+
+func (s *PostgresStore) ListUsers() ([]*User, error) {
+	rows, err := s.db.Query(`SELECT id, username, password_hash, is_staff, can_approve, has_usable_password FROM users ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	defer rows.Close()
+
+	users := make([]*User, 0)
+	for rows.Next() {
+		var user User
+		var passwordHash sql.NullString
+		if err := rows.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.HasUsablePassword); err != nil {
+			return nil, fmt.Errorf("scan user: %w", err)
+		}
+		if passwordHash.Valid {
+			user.PasswordHash = passwordHash.String
+		}
+		users = append(users, &user)
+	}
+	return users, rows.Err()
+}
+
+func (s *PostgresStore) GetUserByID(id int) (*User, error) {
+	var user User
+	var passwordHash sql.NullString
+	row := s.db.QueryRow(
+		`SELECT id, username, password_hash, is_staff, can_approve, has_usable_password
+		 FROM users WHERE id = $1`,
+		id,
+	)
+	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.HasUsablePassword); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get user by id: %w", err)
+	}
+	if passwordHash.Valid {
+		user.PasswordHash = passwordHash.String
+	}
+	return &user, nil
+}
+
+func (s *PostgresStore) UpdateUser(id int, username string, isStaff, canApprove, hasUsablePassword bool) (*User, error) {
+	var user User
+	var passwordHash sql.NullString
+	row := s.db.QueryRow(
+		`UPDATE users
+		 SET username = $1, is_staff = $2, can_approve = $3, has_usable_password = $4
+		 WHERE id = $5
+		 RETURNING id, username, password_hash, is_staff, can_approve, has_usable_password`,
+		username, isStaff, canApprove, hasUsablePassword, id,
+	)
+	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.HasUsablePassword); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("update user: %w", err)
+	}
+	if passwordHash.Valid {
+		user.PasswordHash = passwordHash.String
+	}
+	return &user, nil
+}
+
+func (s *PostgresStore) UpdateUserPassword(id int, passwordHash string, hasUsablePassword bool) (*User, error) {
+	var user User
+	var hash sql.NullString
+	row := s.db.QueryRow(
+		`UPDATE users
+		 SET password_hash = $1, has_usable_password = $2
+		 WHERE id = $3
+		 RETURNING id, username, password_hash, is_staff, can_approve, has_usable_password`,
+		nullableString(passwordHash), hasUsablePassword, id,
+	)
+	if err := row.Scan(&user.ID, &user.Username, &hash, &user.IsStaff, &user.CanApprove, &user.HasUsablePassword); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("update user password: %w", err)
+	}
+	if hash.Valid {
+		user.PasswordHash = hash.String
+	}
+	return &user, nil
+}
+
+func (s *PostgresStore) DeleteUser(id int) error {
+	result, err := s.db.Exec(`DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *PostgresStore) decryptSecret(secret *Secret) (*Secret, error) {
 	if s.codec == nil {
 		return nil, ErrMissingCodec

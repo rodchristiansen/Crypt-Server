@@ -65,7 +65,12 @@ Source: `server/templates/server/*.html`, `templates/*.html`, `site_static/*`
 - Server-rendered pages using Bootstrap + DataTables.
 - DataTables search/sort/pagination for the home list.
 - Request, approve, retrieve, and manage screens.
-- Login + password change flows.
+- Login + password change flows (for local users).
+- CSRF protections on all user input
+- UI that allows admin users to create, edit, delete users and reset passwords.
+- Utility in the main app binary to create the first admin user
+- UI should look exactly the same as the existing django app
+- For SAML users, isStaff or can approve permissions should be able to be set via saml attributes
 
 ## Migration Plan
 

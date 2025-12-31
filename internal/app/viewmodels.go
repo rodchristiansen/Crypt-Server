@@ -3,6 +3,7 @@ package app
 import "crypt-server/internal/store"
 
 type User struct {
+	ID                int
 	Username          string
 	IsAuthenticated   bool
 	IsStaff           bool
@@ -49,4 +50,14 @@ type TemplateData struct {
 	ApprovedRequestID int
 	RequestsForSecret []*store.Request
 	SecretChars       []SecretChar
+	Users             []*store.User
+	NewUser           UserForm
+	AdminUser         *store.User
+}
+
+type UserForm struct {
+	Username          string
+	IsStaff           bool
+	CanApprove        bool
+	HasUsablePassword bool
 }

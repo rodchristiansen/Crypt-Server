@@ -6,6 +6,9 @@
     <p><input class='btn' type="button" value="Logout" onClick="document.location.href='/logout/';" /></p>
 {{else}}
     <h2>Please log in.</h2>
+    {{if .ErrorMessage}}
+        <div class="alert alert-danger">{{.ErrorMessage}}</div>
+    {{end}}
     <form method="post" action="/login/">
         <table>
         <tr>

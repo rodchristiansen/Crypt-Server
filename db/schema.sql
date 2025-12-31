@@ -27,3 +27,12 @@ CREATE TABLE IF NOT EXISTS requests (
     date_approved TIMESTAMPTZ NULL,
     current BOOLEAN NOT NULL DEFAULT TRUE
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NULL,
+    is_staff BOOLEAN NOT NULL DEFAULT FALSE,
+    can_approve BOOLEAN NOT NULL DEFAULT FALSE,
+    has_usable_password BOOLEAN NOT NULL DEFAULT FALSE
+);

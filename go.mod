@@ -7,6 +7,7 @@ require (
 	github.com/fernet/fernet-go v0.0.0-20240119011108-303da6aec611
 	github.com/lib/pq v1.10.9
 	github.com/stretchr/testify v1.9.0
+	golang.org/x/crypto v0.23.0
 )
 
 require (

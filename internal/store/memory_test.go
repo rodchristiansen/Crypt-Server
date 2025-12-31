@@ -59,3 +59,52 @@ func TestMemoryStoreSecretAndRequestLifecycle(t *testing.T) {
 	require.NotNil(t, approved.Approved)
 	require.True(t, *approved.Approved)
 }
+
+func TestMemoryStoreUserLifecycle(t *testing.T) {
+	store := NewMemoryStore(testCodec(t))
+	user, err := store.AddUser("admin", "hash", true, true, true)
+	require.NoError(t, err)
+	require.NotZero(t, user.ID)
+
+	loaded, err := store.GetUserByUsername("ADMIN")
+	require.NoError(t, err)
+	require.Equal(t, user.ID, loaded.ID)
+	require.True(t, loaded.CanApprove)
+}
+
+func TestMemoryStoreListUsers(t *testing.T) {
+	store := NewMemoryStore(testCodec(t))
+	_, err := store.AddUser("first", "hash", true, false, true)
+	require.NoError(t, err)
+	_, err = store.AddUser("second", "hash", false, true, true)
+	require.NoError(t, err)
+
+	users, err := store.ListUsers()
+	require.NoError(t, err)
+	require.Len(t, users, 2)
+	require.Equal(t, "first", users[0].Username)
+	require.Equal(t, "second", users[1].Username)
+}
+
+func TestMemoryStoreUpdateAndDeleteUser(t *testing.T) {
+	store := NewMemoryStore(testCodec(t))
+	user, err := store.AddUser("first", "hash", true, false, true)
+	require.NoError(t, err)
+
+	updated, err := store.UpdateUser(user.ID, "updated", false, true, false)
+	require.NoError(t, err)
+	require.Equal(t, "updated", updated.Username)
+	require.False(t, updated.IsStaff)
+	require.True(t, updated.CanApprove)
+	require.False(t, updated.HasUsablePassword)
+
+	updated, err = store.UpdateUserPassword(user.ID, "newhash", true)
+	require.NoError(t, err)
+	require.Equal(t, "newhash", updated.PasswordHash)
+	require.True(t, updated.HasUsablePassword)
+
+	err = store.DeleteUser(user.ID)
+	require.NoError(t, err)
+	_, err = store.GetUserByID(user.ID)
+	require.Error(t, err)
+}
