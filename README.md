@@ -14,6 +14,24 @@ If you intend on using the server for anything semi-serious it is a good idea to
 
   [1]: https://github.com/grahamgilbert/Crypt
 
+## Migration helper
+
+The new migration helper can generate an encryption key for the Go backend:
+
+```
+go run ./cmd/cryptctl gen-key
+```
+
+Convert a Django JSON fixture (from `manage.py dumpdata`) into an encrypted export file:
+
+```
+go run ./cmd/cryptctl import-fixture \
+  --input legacy.json \
+  --output migration-export.json \
+  --legacy-key-file legacy-field-encryption-key.txt \
+  --new-key-file new-field-encryption-key.txt
+```
+
 ## Installation instructions
 
 It is recommended that you use [Docker](https://github.com/grahamgilbert/Crypt-Server/blob/master/docs/Docker.md) to run this, but if you wish to run directly on a host, installation instructions are over in the [docs directory](https://github.com/grahamgilbert/Crypt-Server/blob/master/docs/Installation_on_Ubuntu_1404.md)

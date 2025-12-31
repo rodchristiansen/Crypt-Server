@@ -1,0 +1,2 @@
+- Always write unit tests for all code you write
+- Unit tests should use Testify

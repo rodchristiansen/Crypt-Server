@@ -14,7 +14,7 @@ func TestPostgresStoreAddComputer(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	store := NewPostgresStoreWithDB(db)
+	store := NewPostgresStoreWithDB(db, testCodec(t))
 	lastCheckin := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES ($1, $2, $3, NOW()) RETURNING id, last_checkin",
@@ -31,7 +31,7 @@ func TestPostgresStoreListComputers(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	store := NewPostgresStoreWithDB(db)
+	store := NewPostgresStoreWithDB(db, testCodec(t))
 	now := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT id, serial, username, computername, last_checkin FROM computers ORDER BY id",
@@ -48,7 +48,7 @@ func TestPostgresStoreGetComputerByID(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	store := NewPostgresStoreWithDB(db)
+	store := NewPostgresStoreWithDB(db, testCodec(t))
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT id, serial, username, computername, last_checkin FROM computers WHERE id = $1",
 	)).WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin"}).AddRow(1, "SERIAL", "user", "Mac", time.Now()))
@@ -64,11 +64,11 @@ func TestPostgresStoreAddSecret(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	store := NewPostgresStoreWithDB(db)
+	store := NewPostgresStoreWithDB(db, testCodec(t))
 	now := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"INSERT INTO secrets (computer_id, secret_type, secret, date_escrowed, rotation_required) VALUES ($1, $2, $3, NOW(), $4) RETURNING id, date_escrowed",
-	)).WithArgs(1, "password", "secret", false).WillReturnRows(sqlmock.NewRows([]string{"id", "date_escrowed"}).AddRow(5, now))
+	)).WithArgs(1, "password", sqlmock.AnyArg(), false).WillReturnRows(sqlmock.NewRows([]string{"id", "date_escrowed"}).AddRow(5, now))
 
 	secret, err := store.AddSecret(1, "password", "secret", false)
 	require.NoError(t, err)
@@ -81,7 +81,7 @@ func TestPostgresStoreAddRequestAndApprove(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	store := NewPostgresStoreWithDB(db)
+	store := NewPostgresStoreWithDB(db, testCodec(t))
 	now := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"INSERT INTO requests (secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current) VALUES ($1, $2, $3, $4, $5, $6, NOW(), CASE WHEN $3 IS NULL THEN NULL ELSE NOW() END, true) RETURNING id, date_requested, date_approved",
@@ -111,24 +111,31 @@ func TestPostgresStoreGetSecretAndRequests(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	store := NewPostgresStoreWithDB(db)
+	codec := testCodec(t)
+	store := NewPostgresStoreWithDB(db, codec)
 	now := time.Now()
 
+	encryptedSecret, err := codec.Encrypt("secret")
+	require.NoError(t, err)
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE id = $1",
-	)).WithArgs(2).WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(2, 1, "password", "secret", now, false))
+	)).WithArgs(2).WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(2, 1, "password", encryptedSecret, now, false))
 
 	secret, err := store.GetSecretByID(2)
 	require.NoError(t, err)
 	require.Equal(t, "password", secret.SecretType)
+	require.Equal(t, "secret", secret.Secret)
 
+	encryptedSecret2, err := codec.Encrypt("secret")
+	require.NoError(t, err)
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE computer_id = $1 ORDER BY id",
-	)).WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(2, 1, "password", "secret", now, false))
+	)).WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(2, 1, "password", encryptedSecret2, now, false))
 
 	secrets, err := store.ListSecretsByComputer(1)
 	require.NoError(t, err)
 	require.Len(t, secrets, 1)
+	require.Equal(t, "secret", secrets[0].Secret)
 
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT id, secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current FROM requests WHERE secret_id = $1 ORDER BY id",

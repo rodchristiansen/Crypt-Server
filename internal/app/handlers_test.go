@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"crypt-server/internal/crypto"
 	"crypt-server/internal/store"
 	"github.com/stretchr/testify/require"
 )
@@ -22,7 +24,8 @@ func newTestServer(t *testing.T) (*Server, *store.MemoryStore) {
 	layout := filepath.Join(root, "web", "templates", "layouts", "base.html")
 	pages := filepath.Join(root, "web", "templates", "pages")
 	renderer := NewRenderer(layout, pages)
-	memStore := store.NewMemoryStore()
+	codec := testCodec(t)
+	memStore := store.NewMemoryStore(codec)
 	logger := log.New(io.Discard, "", 0)
 	server := NewServer(memStore, renderer, logger)
 	return server, memStore
@@ -166,4 +169,16 @@ func TestCheckinVerifyStubs(t *testing.T) {
 
 func intToString(value int) string {
 	return strconv.Itoa(value)
+}
+
+func testCodec(t *testing.T) *crypto.AesGcmCodec {
+	t.Helper()
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i + 1)
+	}
+	encoded := base64.StdEncoding.EncodeToString(key)
+	codec, err := crypto.NewAesGcmCodecFromBase64Key(encoded)
+	require.NoError(t, err)
+	return codec
 }

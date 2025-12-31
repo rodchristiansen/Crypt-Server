@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/fernet/fernet-go v0.0.0-20240119011108-303da6aec611
 	github.com/lib/pq v1.10.9
 	github.com/stretchr/testify v1.9.0
 )

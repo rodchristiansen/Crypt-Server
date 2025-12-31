@@ -11,10 +11,11 @@ import (
 )
 
 type PostgresStore struct {
-	db *sql.DB
+	db    *sql.DB
+	codec SecretCodec
 }
 
-func NewPostgresStore(dbURL string) (*PostgresStore, error) {
+func NewPostgresStore(dbURL string, codec SecretCodec) (*PostgresStore, error) {
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -26,11 +27,11 @@ func NewPostgresStore(dbURL string) (*PostgresStore, error) {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 
-	return &PostgresStore{db: db}, nil
+	return &PostgresStore{db: db, codec: codec}, nil
 }
 
-func NewPostgresStoreWithDB(db *sql.DB) *PostgresStore {
-	return &PostgresStore{db: db}
+func NewPostgresStoreWithDB(db *sql.DB, codec SecretCodec) *PostgresStore {
+	return &PostgresStore{db: db, codec: codec}
 }
 
 func (s *PostgresStore) AddComputer(serial, username, computerName string) (*Computer, error) {
@@ -109,26 +110,33 @@ func (s *PostgresStore) GetComputerBySerial(serial string) (*Computer, error) {
 }
 
 func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*Secret, error) {
+	if s.codec == nil {
+		return nil, ErrMissingCodec
+	}
+	encrypted, err := s.codec.Encrypt(secret)
+	if err != nil {
+		return nil, err
+	}
 	var id int
 	var dateEscrowed time.Time
 	row := s.db.QueryRow(
 		`INSERT INTO secrets (computer_id, secret_type, secret, date_escrowed, rotation_required)
 		 VALUES ($1, $2, $3, NOW(), $4)
 		 RETURNING id, date_escrowed`,
-		computerID, secretType, secret, rotationRequired,
+		computerID, secretType, encrypted, rotationRequired,
 	)
 	if err := row.Scan(&id, &dateEscrowed); err != nil {
 		return nil, fmt.Errorf("insert secret: %w", err)
 	}
 
-	return &Secret{
+	return s.decryptSecret(&Secret{
 		ID:               id,
 		ComputerID:       computerID,
 		SecretType:       secretType,
-		Secret:           secret,
+		Secret:           encrypted,
 		DateEscrowed:     dateEscrowed,
 		RotationRequired: rotationRequired,
-	}, nil
+	})
 }
 
 func (s *PostgresStore) ListSecretsByComputer(computerID int) ([]*Secret, error) {
@@ -144,7 +152,11 @@ func (s *PostgresStore) ListSecretsByComputer(computerID int) ([]*Secret, error)
 		if err := rows.Scan(&secret.ID, &secret.ComputerID, &secret.SecretType, &secret.Secret, &secret.DateEscrowed, &secret.RotationRequired); err != nil {
 			return nil, fmt.Errorf("scan secret: %w", err)
 		}
-		secrets = append(secrets, &secret)
+		decrypted, err := s.decryptSecret(&secret)
+		if err != nil {
+			return nil, err
+		}
+		secrets = append(secrets, decrypted)
 	}
 	return secrets, rows.Err()
 }
@@ -158,7 +170,7 @@ func (s *PostgresStore) GetSecretByID(id int) (*Secret, error) {
 		}
 		return nil, fmt.Errorf("get secret: %w", err)
 	}
-	return &secret, nil
+	return s.decryptSecret(&secret)
 }
 
 func (s *PostgresStore) AddRequest(secretID int, requestingUser, reason string, approvedBy string, approved *bool) (*Request, error) {
@@ -272,6 +284,19 @@ func (s *PostgresStore) ApproveRequest(requestID int, approved bool, reason, app
 	}
 	updated.DateApproved = &dateApproved
 	return updated, nil
+}
+
+func (s *PostgresStore) decryptSecret(secret *Secret) (*Secret, error) {
+	if s.codec == nil {
+		return nil, ErrMissingCodec
+	}
+	plaintext, err := s.codec.Decrypt(secret.Secret)
+	if err != nil {
+		return nil, err
+	}
+	clone := *secret
+	clone.Secret = plaintext
+	return &clone, nil
 }
 
 type scanner interface {

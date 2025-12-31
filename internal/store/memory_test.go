@@ -7,7 +7,7 @@ import (
 )
 
 func TestMemoryStoreComputerLifecycle(t *testing.T) {
-	store := NewMemoryStore()
+	store := NewMemoryStore(testCodec(t))
 	computer, err := store.AddComputer("SERIAL1", "user1", "MacBook")
 	require.NoError(t, err)
 	require.NotZero(t, computer.ID)
@@ -26,12 +26,13 @@ func TestMemoryStoreComputerLifecycle(t *testing.T) {
 }
 
 func TestMemoryStoreSecretAndRequestLifecycle(t *testing.T) {
-	store := NewMemoryStore()
+	store := NewMemoryStore(testCodec(t))
 	computer, err := store.AddComputer("SERIAL2", "user2", "iMac")
 	require.NoError(t, err)
 
 	secret, err := store.AddSecret(computer.ID, "recovery_key", "secret-value", false)
 	require.NoError(t, err)
+	require.NotEqual(t, "secret-value", store.secrets[secret.ID].Secret)
 
 	secrets, err := store.ListSecretsByComputer(computer.ID)
 	require.NoError(t, err)

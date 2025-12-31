@@ -16,9 +16,10 @@ type MemoryStore struct {
 	computers      map[int]*Computer
 	secrets        map[int]*Secret
 	requests       map[int]*Request
+	codec          SecretCodec
 }
 
-func NewMemoryStore() *MemoryStore {
+func NewMemoryStore(codec SecretCodec) *MemoryStore {
 	return &MemoryStore{
 		nextComputerID: 1,
 		nextSecretID:   1,
@@ -26,6 +27,7 @@ func NewMemoryStore() *MemoryStore {
 		computers:      make(map[int]*Computer),
 		secrets:        make(map[int]*Secret),
 		requests:       make(map[int]*Request),
+		codec:          codec,
 	}
 }
 
@@ -89,17 +91,24 @@ func (s *MemoryStore) AddSecret(computerID int, secretType, secret string, rotat
 	if _, ok := s.computers[computerID]; !ok {
 		return nil, ErrNotFound
 	}
+	if s.codec == nil {
+		return nil, ErrMissingCodec
+	}
+	encrypted, err := s.codec.Encrypt(secret)
+	if err != nil {
+		return nil, err
+	}
 	entry := &Secret{
 		ID:               s.nextSecretID,
 		ComputerID:       computerID,
 		SecretType:       secretType,
-		Secret:           secret,
+		Secret:           encrypted,
 		DateEscrowed:     time.Now(),
 		RotationRequired: rotationRequired,
 	}
 	s.nextSecretID++
 	s.secrets[entry.ID] = entry
-	return entry, nil
+	return s.decryptSecret(entry)
 }
 
 func (s *MemoryStore) ListSecretsByComputer(computerID int) ([]*Secret, error) {
@@ -112,7 +121,11 @@ func (s *MemoryStore) ListSecretsByComputer(computerID int) ([]*Secret, error) {
 	secrets := make([]*Secret, 0)
 	for _, secret := range s.secrets {
 		if secret.ComputerID == computerID {
-			secrets = append(secrets, secret)
+			decrypted, err := s.decryptSecret(secret)
+			if err != nil {
+				return nil, err
+			}
+			secrets = append(secrets, decrypted)
 		}
 	}
 	sort.Slice(secrets, func(i, j int) bool {
@@ -129,7 +142,7 @@ func (s *MemoryStore) GetSecretByID(id int) (*Secret, error) {
 	if !ok {
 		return nil, ErrNotFound
 	}
-	return secret, nil
+	return s.decryptSecret(secret)
 }
 
 func (s *MemoryStore) AddRequest(secretID int, requestingUser, reason string, approvedBy string, approved *bool) (*Request, error) {
@@ -219,4 +232,17 @@ func (s *MemoryStore) ApproveRequest(requestID int, approved bool, reason, appro
 	now := time.Now()
 	request.DateApproved = &now
 	return request, nil
+}
+
+func (s *MemoryStore) decryptSecret(secret *Secret) (*Secret, error) {
+	if s.codec == nil {
+		return nil, ErrMissingCodec
+	}
+	plaintext, err := s.codec.Decrypt(secret.Secret)
+	if err != nil {
+		return nil, err
+	}
+	clone := *secret
+	clone.Secret = plaintext
+	return &clone, nil
 }

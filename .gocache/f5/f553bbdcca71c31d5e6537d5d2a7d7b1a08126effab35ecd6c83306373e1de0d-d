@@ -1,6 +1,0 @@
-./memory.go
-./models.go
-./postgres.go
-./store.go
-./memory_test.go
-./postgres_test.go

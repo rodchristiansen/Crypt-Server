@@ -3,6 +3,12 @@ package store
 import "errors"
 
 var ErrNotFound = errors.New("not found")
+var ErrMissingCodec = errors.New("secret codec is required")
+
+type SecretCodec interface {
+	Encrypt(plaintext string) (string, error)
+	Decrypt(ciphertext string) (string, error)
+}
 
 type Store interface {
 	AddComputer(serial, username, computerName string) (*Computer, error)

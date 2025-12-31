@@ -1,6 +1,0 @@
-./handlers.go
-./renderer.go
-./server.go
-./viewmodels.go
-./handlers_test.go
-./renderer_test.go
