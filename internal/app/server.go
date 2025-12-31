@@ -8,12 +8,12 @@ import (
 )
 
 type Server struct {
-	store    *store.Store
+	store    store.Store
 	renderer *Renderer
 	logger   *log.Logger
 }
 
-func NewServer(store *store.Store, renderer *Renderer, logger *log.Logger) *Server {
+func NewServer(store store.Store, renderer *Renderer, logger *log.Logger) *Server {
 	return &Server{store: store, renderer: renderer, logger: logger}
 }
 

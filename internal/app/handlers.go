@@ -19,12 +19,22 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := TemplateData{
-		Title:            "Crypt",
-		User:             s.currentUser(r),
-		Version:          "0.0.0-dev",
-		Computers:        s.store.ListComputers(),
-		OutstandingCount: len(s.store.ListOutstandingRequests()),
+		Title:   "Crypt",
+		User:    s.currentUser(r),
+		Version: "0.0.0-dev",
 	}
+	computers, err := s.store.ListComputers()
+	if err != nil {
+		s.renderError(w, err)
+		return
+	}
+	outstanding, err := s.store.ListOutstandingRequests()
+	if err != nil {
+		s.renderError(w, err)
+		return
+	}
+	data.Computers = computers
+	data.OutstandingCount = len(outstanding)
 
 	if err := s.renderer.Render(w, "index", data); err != nil {
 		s.renderError(w, err)
@@ -43,7 +53,11 @@ func (s *Server) handleTableAjax(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	computers := s.store.ListComputers()
+	computers, err := s.store.ListComputers()
+	if err != nil {
+		s.renderError(w, err)
+		return
+	}
 	data["draw"] = draw
 	data["recordsTotal"] = len(computers)
 	data["recordsFiltered"] = len(computers)
@@ -102,7 +116,11 @@ func (s *Server) handleNewComputer(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		computer := s.store.AddComputer(serial, username, computerName)
+		computer, err := s.store.AddComputer(serial, username, computerName)
+		if err != nil {
+			s.renderError(w, err)
+			return
+		}
 		http.Redirect(w, r, fmt.Sprintf("/info/%d/", computer.ID), http.StatusSeeOther)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -210,7 +228,11 @@ func (s *Server) handleSecretInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	requests, _ := s.store.ListRequestsBySecret(secret.ID)
+	requests, err := s.store.ListRequestsBySecret(secret.ID)
+	if err != nil {
+		s.renderError(w, err)
+		return
+	}
 	canRequest := true
 	for _, request := range requests {
 		if request.RequestingUser == s.currentUser(r).Username && request.Approved == nil {
@@ -389,7 +411,11 @@ func (s *Server) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleManageRequests(w http.ResponseWriter, r *http.Request) {
-	requests := s.store.ListOutstandingRequests()
+	requests, err := s.store.ListOutstandingRequests()
+	if err != nil {
+		s.renderError(w, err)
+		return
+	}
 	views := make([]RequestView, 0, len(requests))
 	for _, req := range requests {
 		secret, err := s.store.GetSecretByID(req.SecretID)

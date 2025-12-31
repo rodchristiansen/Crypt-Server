@@ -10,7 +10,19 @@ import (
 
 func main() {
 	logger := log.New(os.Stdout, "crypt-server ", log.LstdFlags)
-	dataStore := store.NewStore()
+	var dataStore store.Store
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL != "" {
+		postgresStore, err := store.NewPostgresStore(dbURL)
+		if err != nil {
+			logger.Fatalf("database connection failed: %v", err)
+		}
+		dataStore = postgresStore
+		logger.Printf("using postgres store")
+	} else {
+		dataStore = store.NewMemoryStore()
+		logger.Printf("using in-memory store")
+	}
 	renderer := app.NewRenderer("web/templates/layouts/base.html", "web/templates/pages")
 	server := app.NewServer(dataStore, renderer, logger)
 
