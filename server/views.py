@@ -540,6 +540,8 @@ def checkin(request):
     computer.secret_type = secret_type
     computer.save()
 
+    newly_created = True
+
     try:
         secret = Secret(
             computer=computer,
@@ -549,6 +551,7 @@ def checkin(request):
         )
         secret.save()
     except ValidationError:
+        newly_created = False
         pass
 
     latest_secret = (
@@ -562,5 +565,6 @@ def checkin(request):
         "serial": computer.serial,
         "username": computer.username,
         "rotation_required": rotation_required,
+        "newly_created": newly_created,
     }
     return HttpResponse(json.dumps(c), content_type="application/json")
