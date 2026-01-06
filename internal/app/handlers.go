@@ -37,7 +37,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	data.Computers = computers
 	data.OutstandingCount = len(outstanding)
 
-	if err := s.renderer.Render(w, "index", data); err != nil {
+	if err := s.renderTemplate(w, r, "index", data); err != nil {
 		s.renderError(w, err)
 	}
 }
@@ -95,7 +95,7 @@ func (s *Server) handleNewComputer(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		data := TemplateData{Title: "New Computer", User: s.currentUser(r)}
-		if err := s.renderer.Render(w, "new_computer", data); err != nil {
+		if err := s.renderTemplate(w, r, "new_computer", data); err != nil {
 			s.renderError(w, err)
 		}
 	case http.MethodPost:
@@ -112,7 +112,7 @@ func (s *Server) handleNewComputer(w http.ResponseWriter, r *http.Request) {
 				User:         s.currentUser(r),
 				ErrorMessage: "Serial number and computer name are required.",
 			}
-			if err := s.renderer.Render(w, "new_computer", data); err != nil {
+			if err := s.renderTemplate(w, r, "new_computer", data); err != nil {
 				s.renderError(w, err)
 			}
 			return
@@ -144,7 +144,7 @@ func (s *Server) handleNewSecret(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		data := TemplateData{Title: "New Secret", User: s.currentUser(r), Computer: computer}
-		if err := s.renderer.Render(w, "new_secret", data); err != nil {
+		if err := s.renderTemplate(w, r, "new_secret", data); err != nil {
 			s.renderError(w, err)
 		}
 	case http.MethodPost:
@@ -163,7 +163,7 @@ func (s *Server) handleNewSecret(w http.ResponseWriter, r *http.Request) {
 				Computer:     computer,
 				ErrorMessage: "Secret type and value are required.",
 			}
-			if err := s.renderer.Render(w, "new_secret", data); err != nil {
+			if err := s.renderTemplate(w, r, "new_secret", data); err != nil {
 				s.renderError(w, err)
 			}
 			return
@@ -205,7 +205,7 @@ func (s *Server) handleComputerInfo(w http.ResponseWriter, r *http.Request) {
 		Computer: computer,
 		Secrets:  secrets,
 	}
-	if err := s.renderer.Render(w, "computer_info", data); err != nil {
+	if err := s.renderTemplate(w, r, "computer_info", data); err != nil {
 		s.renderError(w, err)
 	}
 }
@@ -259,7 +259,7 @@ func (s *Server) handleSecretInfo(w http.ResponseWriter, r *http.Request) {
 		ApprovedRequestID: approvedRequestID,
 		RequestsForSecret: requests,
 	}
-	if err := s.renderer.Render(w, "secret_info", data); err != nil {
+	if err := s.renderTemplate(w, r, "secret_info", data); err != nil {
 		s.renderError(w, err)
 	}
 }
@@ -286,7 +286,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		data := TemplateData{Title: "Request Secret", User: s.currentUser(r), Secret: secret, Computer: computer}
-		if err := s.renderer.Render(w, "request", data); err != nil {
+		if err := s.renderTemplate(w, r, "request", data); err != nil {
 			s.renderError(w, err)
 		}
 	case http.MethodPost:
@@ -346,7 +346,7 @@ func (s *Server) handleApprove(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data := TemplateData{Title: "Approve Request", User: s.currentUser(r), Request: req, Secret: secret, Computer: computer}
-		if err := s.renderer.Render(w, "approve", data); err != nil {
+		if err := s.renderTemplate(w, r, "approve", data); err != nil {
 			s.renderError(w, err)
 		}
 	case http.MethodPost:
@@ -423,7 +423,7 @@ func (s *Server) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 		Computer:    computer,
 		SecretChars: secretChars,
 	}
-	if err := s.renderer.Render(w, "retrieve", data); err != nil {
+	if err := s.renderTemplate(w, r, "retrieve", data); err != nil {
 		s.renderError(w, err)
 	}
 }
@@ -458,7 +458,7 @@ func (s *Server) handleManageRequests(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	data := TemplateData{Title: "Manage Requests", User: s.currentUser(r), ManageRequests: views}
-	if err := s.renderer.Render(w, "manage_requests", data); err != nil {
+	if err := s.renderTemplate(w, r, "manage_requests", data); err != nil {
 		s.renderError(w, err)
 	}
 }
@@ -498,7 +498,7 @@ func (s *Server) handleUserList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := TemplateData{Title: "Users", User: s.currentUser(r), Users: users}
-	if err := s.renderer.Render(w, "user_list", data); err != nil {
+	if err := s.renderTemplate(w, r, "user_list", data); err != nil {
 		s.renderError(w, err)
 	}
 }
@@ -517,7 +517,7 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 				HasUsablePassword: true,
 			},
 		}
-		if err := s.renderer.Render(w, "user_new", data); err != nil {
+		if err := s.renderTemplate(w, r, "user_new", data); err != nil {
 			s.renderError(w, err)
 		}
 	case http.MethodPost:
@@ -542,7 +542,7 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 					HasUsablePassword: hasPassword,
 				},
 			}
-			if err := s.renderer.Render(w, "user_new", data); err != nil {
+			if err := s.renderTemplate(w, r, "user_new", data); err != nil {
 				s.renderError(w, err)
 			}
 			return
@@ -559,7 +559,7 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 					HasUsablePassword: hasPassword,
 				},
 			}
-			if err := s.renderer.Render(w, "user_new", data); err != nil {
+			if err := s.renderTemplate(w, r, "user_new", data); err != nil {
 				s.renderError(w, err)
 			}
 			return
@@ -614,7 +614,7 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 				HasUsablePassword: user.HasUsablePassword,
 			},
 		}
-		if err := s.renderer.Render(w, "user_edit", data); err != nil {
+		if err := s.renderTemplate(w, r, "user_edit", data); err != nil {
 			s.renderError(w, err)
 		}
 	case http.MethodPost:
@@ -639,7 +639,7 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 					HasUsablePassword: hasPassword,
 				},
 			}
-			if err := s.renderer.Render(w, "user_edit", data); err != nil {
+			if err := s.renderTemplate(w, r, "user_edit", data); err != nil {
 				s.renderError(w, err)
 			}
 			return
@@ -657,7 +657,7 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 					HasUsablePassword: hasPassword,
 				},
 			}
-			if err := s.renderer.Render(w, "user_edit", data); err != nil {
+			if err := s.renderTemplate(w, r, "user_edit", data); err != nil {
 				s.renderError(w, err)
 			}
 			return
@@ -694,7 +694,7 @@ func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		data := TemplateData{Title: "Reset Password", User: s.currentUser(r), AdminUser: user}
-		if err := s.renderer.Render(w, "user_password", data); err != nil {
+		if err := s.renderTemplate(w, r, "user_password", data); err != nil {
 			s.renderError(w, err)
 		}
 	case http.MethodPost:
@@ -710,7 +710,7 @@ func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
 				AdminUser:    user,
 				ErrorMessage: "Password is required.",
 			}
-			if err := s.renderer.Render(w, "user_password", data); err != nil {
+			if err := s.renderTemplate(w, r, "user_password", data); err != nil {
 				s.renderError(w, err)
 			}
 			return
@@ -748,7 +748,7 @@ func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		data := TemplateData{Title: "Delete User", User: s.currentUser(r), AdminUser: user}
-		if err := s.renderer.Render(w, "user_delete", data); err != nil {
+		if err := s.renderTemplate(w, r, "user_delete", data); err != nil {
 			s.renderError(w, err)
 		}
 	case http.MethodPost:
@@ -759,7 +759,7 @@ func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 				AdminUser:    user,
 				ErrorMessage: "You cannot delete your own account.",
 			}
-			if err := s.renderer.Render(w, "user_delete", data); err != nil {
+			if err := s.renderTemplate(w, r, "user_delete", data); err != nil {
 				s.renderError(w, err)
 			}
 			return
@@ -778,7 +778,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		data := TemplateData{Title: "Login", User: s.currentUser(r)}
-		if err := s.renderer.Render(w, "login", data); err != nil {
+		if err := s.renderTemplate(w, r, "login", data); err != nil {
 			s.renderError(w, err)
 		}
 	case http.MethodPost:
@@ -841,13 +841,29 @@ func (s *Server) renderError(w http.ResponseWriter, err error) {
 	http.Error(w, "Something went wrong", http.StatusInternalServerError)
 }
 
+func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name string, data TemplateData) error {
+	data.CSRFToken = s.csrfToken(w, r)
+	return s.renderer.Render(w, name, data)
+}
+
+func (s *Server) csrfToken(w http.ResponseWriter, r *http.Request) string {
+	if s.csrfManager == nil {
+		return ""
+	}
+	token, err := s.csrfManager.EnsureToken(w, r, s.settings.CookieSecure)
+	if err != nil {
+		return ""
+	}
+	return token
+}
+
 func (s *Server) renderLoginError(w http.ResponseWriter, r *http.Request, message string) {
 	data := TemplateData{
 		Title:        "Login",
 		User:         s.currentUser(r),
 		ErrorMessage: message,
 	}
-	if err := s.renderer.Render(w, "login", data); err != nil {
+	if err := s.renderTemplate(w, r, "login", data); err != nil {
 		s.renderError(w, err)
 	}
 }

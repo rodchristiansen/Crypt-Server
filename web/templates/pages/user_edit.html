@@ -8,6 +8,7 @@
       <div class="alert alert-danger">{{.ErrorMessage}}</div>
     {{end}}
     <form method="post" action="/admin/users/{{.AdminUser.ID}}/edit/">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
       <div class="form-group">
         <label for="username">Username</label>
         <input id="username" name="username" type="text" class="form-control" value="{{.NewUser.Username}}" />

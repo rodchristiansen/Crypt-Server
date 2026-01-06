@@ -4,7 +4,8 @@
 <h1>Approve Request</h1>
 <p>{{.Computer.ComputerName}} ({{.Computer.Serial}})</p>
 {{if .ErrorMessage}}<p><strong>{{.ErrorMessage}}</strong></p>{{end}}
-<form action="/approve/{{.Request.ID}}/" method="post">
+        <form action="/approve/{{.Request.ID}}/" method="post">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
     <div class="form-group">
         <label>Approved?</label>
         <div>

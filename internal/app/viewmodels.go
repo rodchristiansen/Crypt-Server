@@ -53,6 +53,7 @@ type TemplateData struct {
 	Users             []*store.User
 	NewUser           UserForm
 	AdminUser         *store.User
+	CSRFToken         string
 }
 
 type UserForm struct {

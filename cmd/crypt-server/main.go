@@ -48,7 +48,8 @@ func main() {
 		SessionTTL:   sessionTTL,
 		CookieSecure: envBool("SESSION_COOKIE_SECURE", false),
 	}
-	server := app.NewServer(dataStore, renderer, logger, sessionManager, settings)
+	csrfManager := app.NewCSRFManager("crypt_csrf", 32)
+	server := app.NewServer(dataStore, renderer, logger, sessionManager, csrfManager, settings)
 
 	addr := ":8080"
 	logger.Printf("listening on %s", addr)

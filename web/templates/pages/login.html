@@ -10,6 +10,7 @@
         <div class="alert alert-danger">{{.ErrorMessage}}</div>
     {{end}}
     <form method="post" action="/login/">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
         <table>
         <tr>
             <td><label for="username">Username</label></td>

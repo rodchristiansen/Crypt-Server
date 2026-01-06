@@ -36,7 +36,8 @@ func newTestServer(t *testing.T) (*Server, *store.MemoryStore, *SessionManager) 
 		SessionTTL:   time.Hour,
 		CookieSecure: false,
 	}
-	server := NewServer(memStore, renderer, logger, sessionManager, settings)
+	csrfManager := NewCSRFManager("crypt_csrf", 32)
+	server := NewServer(memStore, renderer, logger, sessionManager, csrfManager, settings)
 	passwordHash := hashPasswordForTest(t, "password")
 	_, err = memStore.AddUser("admin", passwordHash, true, true, true)
 	require.NoError(t, err)
@@ -85,8 +86,7 @@ func TestHandleNewComputerFlow(t *testing.T) {
 	form.Set("computername", "MacBook Air")
 
 	rec := httptest.NewRecorder()
-	req := newAuthenticatedRequest(t, sessionManager, http.MethodPost, "/new/computer/", strings.NewReader(form.Encode()), "admin")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/new/computer/", form, "admin")
 	serveProtected(server, rec, req, server.handleNewComputer)
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
@@ -103,8 +103,7 @@ func TestRequestApproveRetrieveFlow(t *testing.T) {
 	form := url.Values{}
 	form.Set("reason_for_request", "Need access")
 	rec := httptest.NewRecorder()
-	req := newAuthenticatedRequest(t, sessionManager, http.MethodPost, "/request/"+intToString(secret.ID)+"/", strings.NewReader(form.Encode()), "admin")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/request/"+intToString(secret.ID)+"/", form, "admin")
 	serveProtected(server, rec, req, server.handleRequest)
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
@@ -246,8 +245,7 @@ func TestHandleNewUser(t *testing.T) {
 	form.Set("is_staff", "on")
 	form.Set("can_approve", "on")
 	rec := httptest.NewRecorder()
-	req := newAuthenticatedRequest(t, sessionManager, http.MethodPost, "/admin/users/new/", strings.NewReader(form.Encode()), "admin")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/admin/users/new/", form, "admin")
 	serveProtected(server, rec, req, server.handleNewUser)
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
@@ -270,8 +268,7 @@ func TestHandleUserEdit(t *testing.T) {
 	form.Set("can_approve", "on")
 	form.Set("has_usable_password", "on")
 	rec := httptest.NewRecorder()
-	req := newAuthenticatedRequest(t, sessionManager, http.MethodPost, "/admin/users/"+intToString(target.ID)+"/edit/", strings.NewReader(form.Encode()), "admin")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/admin/users/"+intToString(target.ID)+"/edit/", form, "admin")
 	serveProtected(server, rec, req, server.handleUserEdit)
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
@@ -291,8 +288,7 @@ func TestHandleUserPassword(t *testing.T) {
 	form := url.Values{}
 	form.Set("password", "newpass")
 	rec := httptest.NewRecorder()
-	req := newAuthenticatedRequest(t, sessionManager, http.MethodPost, "/admin/users/"+intToString(target.ID)+"/password/", strings.NewReader(form.Encode()), "admin")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/admin/users/"+intToString(target.ID)+"/password/", form, "admin")
 	serveProtected(server, rec, req, server.handleUserPassword)
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
@@ -308,7 +304,7 @@ func TestHandleUserDelete(t *testing.T) {
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
-	req := newAuthenticatedRequest(t, sessionManager, http.MethodPost, "/admin/users/"+intToString(target.ID)+"/delete/", nil, "admin")
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/admin/users/"+intToString(target.ID)+"/delete/", url.Values{}, "admin")
 	serveProtected(server, rec, req, server.handleUserDelete)
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
@@ -322,7 +318,7 @@ func TestHandleUserDeleteSelf(t *testing.T) {
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
-	req := newAuthenticatedRequest(t, sessionManager, http.MethodPost, "/admin/users/"+intToString(admin.ID)+"/delete/", nil, "admin")
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/admin/users/"+intToString(admin.ID)+"/delete/", url.Values{}, "admin")
 	serveProtected(server, rec, req, server.handleUserDelete)
 
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -342,8 +338,19 @@ func newAuthenticatedRequest(t *testing.T, sessionManager *SessionManager, metho
 	return req
 }
 
+func newAuthenticatedFormRequest(t *testing.T, server *Server, sessionManager *SessionManager, method, target string, form url.Values, username string) *http.Request {
+	t.Helper()
+	csrfToken, err := server.csrfManager.GenerateToken()
+	require.NoError(t, err)
+	form.Set("csrf_token", csrfToken)
+	req := newAuthenticatedRequest(t, sessionManager, method, target, strings.NewReader(form.Encode()), username)
+	req.AddCookie(&http.Cookie{Name: server.csrfManager.cookieName, Value: csrfToken})
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return req
+}
+
 func serveProtected(server *Server, rec *httptest.ResponseRecorder, req *http.Request, handler http.HandlerFunc) {
-	server.withUser(http.HandlerFunc(server.requireAuth(handler))).ServeHTTP(rec, req)
+	server.withCSRF(server.withUser(http.HandlerFunc(server.requireAuth(handler)))).ServeHTTP(rec, req)
 }
 
 func hashPasswordForTest(t *testing.T, password string) string {

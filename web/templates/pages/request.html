@@ -5,7 +5,8 @@
 <p>{{.Computer.ComputerName}} ({{.Computer.Serial}})</p>
 <p>{{.Secret.SecretType}} - {{.Secret.DateEscrowed}}</p>
 {{if .ErrorMessage}}<p><strong>{{.ErrorMessage}}</strong></p>{{end}}
-<form action="/request/{{.Secret.ID}}/" method="post">
+        <form action="/request/{{.Secret.ID}}/" method="post">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}" />
     <div class="form-group">
         <label for="reason_for_request">Reason for Request</label>
         <textarea class="form-control" id="reason_for_request" name="reason_for_request" rows="4"></textarea>

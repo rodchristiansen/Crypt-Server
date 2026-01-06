@@ -14,15 +14,17 @@ type Server struct {
 	renderer       *Renderer
 	logger         *log.Logger
 	sessionManager *SessionManager
+	csrfManager    *CSRFManager
 	settings       Settings
 }
 
-func NewServer(store store.Store, renderer *Renderer, logger *log.Logger, sessionManager *SessionManager, settings Settings) *Server {
+func NewServer(store store.Store, renderer *Renderer, logger *log.Logger, sessionManager *SessionManager, csrfManager *CSRFManager, settings Settings) *Server {
 	return &Server{
 		store:          store,
 		renderer:       renderer,
 		logger:         logger,
 		sessionManager: sessionManager,
+		csrfManager:    csrfManager,
 		settings:       settings,
 	}
 }
@@ -47,7 +49,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/manage-requests/", s.requireAuth(s.handleManageRequests))
 	mux.HandleFunc("/admin/users/", s.requireAuth(s.handleAdminUsers))
 
-	return withTrailingSlashRedirect(s.withUser(mux))
+	return withTrailingSlashRedirect(s.withCSRF(s.withUser(mux)))
 }
 
 func withTrailingSlashRedirect(next http.Handler) http.Handler {
@@ -78,6 +80,47 @@ func urlQueryEscape(value string) string {
 type contextKey string
 
 const userContextKey contextKey = "user"
+
+func (s *Server) withCSRF(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.csrfManager == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !s.isCSRFExempt(r) && isUnsafeMethod(r.Method) {
+			if !s.csrfManager.ValidateRequest(r) {
+				http.Error(w, "CSRF token missing or invalid", http.StatusForbidden)
+				return
+			}
+		}
+		if _, err := s.csrfManager.EnsureToken(w, r, s.settings.CookieSecure); err != nil {
+			s.logger.Printf("csrf error: %v", err)
+			http.Error(w, "Something went wrong", http.StatusInternalServerError)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isUnsafeMethod(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Server) isCSRFExempt(r *http.Request) bool {
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/checkin/"):
+		return true
+	case strings.HasPrefix(r.URL.Path, "/verify/"):
+		return true
+	default:
+		return false
+	}
+}
 
 func (s *Server) withUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
