@@ -171,50 +171,50 @@ func TestPostgresStoreUserLifecycle(t *testing.T) {
 
 	store := NewPostgresStoreWithDB(db, testCodec(t))
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"INSERT INTO users (username, password_hash, is_staff, can_approve, has_usable_password) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-	)).WithArgs("admin", sqlmock.AnyArg(), true, true, true).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7))
+		"INSERT INTO users (username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+	)).WithArgs("admin", sqlmock.AnyArg(), true, true, true, false, "local").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7))
 
-	user, err := store.AddUser("admin", "hash", true, true, true)
+	user, err := store.AddUser("admin", "hash", true, true, true, false, "local")
 	require.NoError(t, err)
 	require.Equal(t, 7, user.ID)
 
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"SELECT id, username, password_hash, is_staff, can_approve, has_usable_password FROM users WHERE lower(username) = lower($1)",
-	)).WithArgs("admin").WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "is_staff", "can_approve", "has_usable_password"}).AddRow(7, "admin", "hash", true, true, true))
+		"SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source FROM users WHERE lower(username) = lower($1)",
+	)).WithArgs("admin").WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "is_staff", "can_approve", "local_login_enabled", "must_reset_password", "auth_source"}).AddRow(7, "admin", "hash", true, true, true, false, "local"))
 
 	loaded, err := store.GetUserByUsername("admin")
 	require.NoError(t, err)
 	require.Equal(t, "admin", loaded.Username)
 
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"SELECT id, username, password_hash, is_staff, can_approve, has_usable_password FROM users WHERE id = $1",
-	)).WithArgs(7).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "is_staff", "can_approve", "has_usable_password"}).AddRow(7, "admin", "hash", true, true, true))
+		"SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source FROM users WHERE id = $1",
+	)).WithArgs(7).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "is_staff", "can_approve", "local_login_enabled", "must_reset_password", "auth_source"}).AddRow(7, "admin", "hash", true, true, true, false, "local"))
 
 	byID, err := store.GetUserByID(7)
 	require.NoError(t, err)
 	require.Equal(t, "admin", byID.Username)
 
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"UPDATE users SET username = $1, is_staff = $2, can_approve = $3, has_usable_password = $4 WHERE id = $5 RETURNING id, username, password_hash, is_staff, can_approve, has_usable_password",
-	)).WithArgs("updated", false, false, false, 7).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "is_staff", "can_approve", "has_usable_password"}).AddRow(7, "updated", "hash", false, false, false))
+		"UPDATE users SET username = $1, is_staff = $2, can_approve = $3, local_login_enabled = $4, must_reset_password = $5, auth_source = $6 WHERE id = $7 RETURNING id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source",
+	)).WithArgs("updated", false, false, false, true, "local", 7).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "is_staff", "can_approve", "local_login_enabled", "must_reset_password", "auth_source"}).AddRow(7, "updated", "hash", false, false, false, true, "local"))
 
-	updated, err := store.UpdateUser(7, "updated", false, false, false)
+	updated, err := store.UpdateUser(7, "updated", false, false, false, true, "local")
 	require.NoError(t, err)
 	require.Equal(t, "updated", updated.Username)
 
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"UPDATE users SET password_hash = $1, has_usable_password = $2 WHERE id = $3 RETURNING id, username, password_hash, is_staff, can_approve, has_usable_password",
-	)).WithArgs(sqlmock.AnyArg(), true, 7).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "is_staff", "can_approve", "has_usable_password"}).AddRow(7, "updated", "newhash", false, false, true))
+		"UPDATE users SET password_hash = $1, must_reset_password = $2, local_login_enabled = CASE WHEN $1 IS NULL THEN local_login_enabled ELSE true END WHERE id = $3 RETURNING id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source",
+	)).WithArgs(sqlmock.AnyArg(), false, 7).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "is_staff", "can_approve", "local_login_enabled", "must_reset_password", "auth_source"}).AddRow(7, "updated", "newhash", false, false, true, false, "local"))
 
-	passwordUpdated, err := store.UpdateUserPassword(7, "newhash", true)
+	passwordUpdated, err := store.UpdateUserPassword(7, "newhash", false)
 	require.NoError(t, err)
 	require.Equal(t, "newhash", passwordUpdated.PasswordHash)
 
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"SELECT id, username, password_hash, is_staff, can_approve, has_usable_password FROM users ORDER BY id",
-	)).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "is_staff", "can_approve", "has_usable_password"}).
-		AddRow(7, "admin", "hash", true, true, true).
-		AddRow(8, "viewer", nil, false, false, false))
+		"SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source FROM users ORDER BY id",
+	)).WillReturnRows(sqlmock.NewRows([]string{"id", "username", "password_hash", "is_staff", "can_approve", "local_login_enabled", "must_reset_password", "auth_source"}).
+		AddRow(7, "admin", "hash", true, true, true, false, "local").
+		AddRow(8, "viewer", nil, false, false, false, false, "saml"))
 
 	users, err := store.ListUsers()
 	require.NoError(t, err)

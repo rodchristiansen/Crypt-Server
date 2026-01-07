@@ -7,8 +7,10 @@ type User struct {
 	Username          string
 	IsAuthenticated   bool
 	IsStaff           bool
-	HasUsablePassword bool
 	CanApprove        bool
+	LocalLoginEnabled bool
+	MustResetPassword bool
+	AuthSource        string
 }
 
 type SecretView struct {
@@ -32,33 +34,36 @@ type RequestView struct {
 }
 
 type TemplateData struct {
-	Title             string
-	User              User
-	Version           string
-	OutstandingCount  int
-	Computers         []*store.Computer
-	Computer          *store.Computer
-	Secrets           []*store.Secret
-	SecretViews       []SecretView
-	Secret            *store.Secret
-	Requests          []*store.Request
-	ManageRequests    []RequestView
-	Request           *store.Request
-	ErrorMessage      string
-	CanRequest        bool
-	RequestApproved   bool
-	ApprovedRequestID int
-	RequestsForSecret []*store.Request
-	SecretChars       []SecretChar
-	Users             []*store.User
-	NewUser           UserForm
-	AdminUser         *store.User
-	CSRFToken         string
+	Title                         string
+	User                          User
+	Version                       string
+	OutstandingCount              int
+	Computers                     []*store.Computer
+	Computer                      *store.Computer
+	Secrets                       []*store.Secret
+	SecretViews                   []SecretView
+	Secret                        *store.Secret
+	Requests                      []*store.Request
+	ManageRequests                []RequestView
+	Request                       *store.Request
+	ErrorMessage                  string
+	CanRequest                    bool
+	RequestApproved               bool
+	ApprovedRequestID             int
+	RequestsForSecret             []*store.Request
+	SecretChars                   []SecretChar
+	Users                         []*store.User
+	NewUser                       UserForm
+	AdminUser                     *store.User
+	CSRFToken                     string
+	PasswordChangeRequiresCurrent bool
 }
 
 type UserForm struct {
 	Username          string
 	IsStaff           bool
 	CanApprove        bool
-	HasUsablePassword bool
+	LocalLoginEnabled bool
+	MustResetPassword bool
+	AuthSource        string
 }

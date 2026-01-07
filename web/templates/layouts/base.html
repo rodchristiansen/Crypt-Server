@@ -39,7 +39,7 @@
                           </a>
                               <ul class="dropdown-menu" role="menu" aria-labelledby="dLabel">
                                   {{block "dropdown" .}}{{end}}
-                                  {{if .User.HasUsablePassword}}
+                                  {{if .User.LocalLoginEnabled}}
                                     <li class="nav-item"><a class="nav-link" href="/password/change/">Change password</a></li>
                                   {{end}}
                                   {{if .User.IsStaff}}

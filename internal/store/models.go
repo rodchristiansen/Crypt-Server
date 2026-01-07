@@ -38,5 +38,7 @@ type User struct {
 	PasswordHash      string
 	IsStaff           bool
 	CanApprove        bool
-	HasUsablePassword bool
+	LocalLoginEnabled bool
+	MustResetPassword bool
+	AuthSource        string
 }

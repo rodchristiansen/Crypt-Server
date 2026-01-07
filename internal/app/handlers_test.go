@@ -39,7 +39,7 @@ func newTestServer(t *testing.T) (*Server, *store.MemoryStore, *SessionManager) 
 	csrfManager := NewCSRFManager("crypt_csrf", 32)
 	server := NewServer(memStore, renderer, logger, sessionManager, csrfManager, settings)
 	passwordHash := hashPasswordForTest(t, "password")
-	_, err = memStore.AddUser("admin", passwordHash, true, true, true)
+	_, err = memStore.AddUser("admin", passwordHash, true, true, true, false, "local")
 	require.NoError(t, err)
 	return server, memStore, sessionManager
 }
@@ -209,10 +209,87 @@ func TestHandleLoginFailure(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "Invalid username or password.")
 }
 
+func TestHandleLoginRequiresLocalLogin(t *testing.T) {
+	server, memStore, _ := newTestServer(t)
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := memStore.AddUser("samluser", passwordHash, false, false, false, false, "saml")
+	require.NoError(t, err)
+
+	form := url.Values{}
+	form.Set("username", "samluser")
+	form.Set("password", "password")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/login/", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	server.handleLogin(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "Invalid username or password.")
+}
+
+func TestHandleLoginRedirectsToReset(t *testing.T) {
+	server, memStore, _ := newTestServer(t)
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := memStore.AddUser("resetme", passwordHash, false, false, true, true, "local")
+	require.NoError(t, err)
+
+	form := url.Values{}
+	form.Set("username", "resetme")
+	form.Set("password", "password")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/login/", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	server.handleLogin(rec, req)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/password/reset/", rec.Header().Get("Location"))
+}
+
+func TestHandlePasswordChange(t *testing.T) {
+	server, _, sessionManager := newTestServer(t)
+
+	form := url.Values{}
+	form.Set("current_password", "password")
+	form.Set("new_password", "Str0ng!Passw0rd")
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/password/change/", form, "admin")
+	serveProtected(server, rec, req, server.handlePasswordChange)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/", rec.Header().Get("Location"))
+}
+
+func TestHandlePasswordResetClearsFlag(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	passwordHash := hashPasswordForTest(t, "password")
+	resetUser, err := memStore.AddUser("resetuser", passwordHash, false, false, true, true, "local")
+	require.NoError(t, err)
+
+	form := url.Values{}
+	form.Set("new_password", "Str0ng!Passw0rd")
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/password/reset/", form, "resetuser")
+	serveProtected(server, rec, req, server.handlePasswordReset)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	updated, err := memStore.GetUserByID(resetUser.ID)
+	require.NoError(t, err)
+	require.False(t, updated.MustResetPassword)
+	require.True(t, verifyPassword("Str0ng!Passw0rd", updated.PasswordHash))
+}
+
+func TestHandleSAMLLoginStub(t *testing.T) {
+	server, _, _ := newTestServer(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/saml/login/", nil)
+	server.handleSAMLLogin(rec, req)
+	require.Equal(t, http.StatusNotImplemented, rec.Code)
+}
+
 func TestHandleUserListRequiresStaff(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	passwordHash := hashPasswordForTest(t, "password")
-	_, err := memStore.AddUser("viewer", passwordHash, false, false, true)
+	_, err := memStore.AddUser("viewer", passwordHash, false, false, true, false, "local")
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -224,7 +301,7 @@ func TestHandleUserListRequiresStaff(t *testing.T) {
 func TestHandleUserList(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	passwordHash := hashPasswordForTest(t, "password")
-	_, err := memStore.AddUser("second", passwordHash, false, false, true)
+	_, err := memStore.AddUser("second", passwordHash, false, false, true, false, "local")
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -240,8 +317,9 @@ func TestHandleNewUser(t *testing.T) {
 
 	form := url.Values{}
 	form.Set("username", "newuser")
-	form.Set("password", "newpass")
-	form.Set("has_usable_password", "on")
+	form.Set("password", "Str0ng!Passw0rd")
+	form.Set("local_login_enabled", "on")
+	form.Set("auth_source", "local")
 	form.Set("is_staff", "on")
 	form.Set("can_approve", "on")
 	rec := httptest.NewRecorder()
@@ -253,20 +331,24 @@ func TestHandleNewUser(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, user.IsStaff)
 	require.True(t, user.CanApprove)
-	require.True(t, verifyPassword("newpass", user.PasswordHash))
+	require.True(t, user.LocalLoginEnabled)
+	require.Equal(t, "local", user.AuthSource)
+	require.True(t, verifyPassword("Str0ng!Passw0rd", user.PasswordHash))
 }
 
 func TestHandleUserEdit(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	passwordHash := hashPasswordForTest(t, "password")
-	target, err := memStore.AddUser("editor", passwordHash, false, false, true)
+	target, err := memStore.AddUser("editor", passwordHash, false, false, true, false, "local")
 	require.NoError(t, err)
 
 	form := url.Values{}
 	form.Set("username", "updated")
 	form.Set("is_staff", "on")
 	form.Set("can_approve", "on")
-	form.Set("has_usable_password", "on")
+	form.Set("local_login_enabled", "on")
+	form.Set("must_reset_password", "on")
+	form.Set("auth_source", "saml")
 	rec := httptest.NewRecorder()
 	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/admin/users/"+intToString(target.ID)+"/edit/", form, "admin")
 	serveProtected(server, rec, req, server.handleUserEdit)
@@ -277,16 +359,18 @@ func TestHandleUserEdit(t *testing.T) {
 	require.Equal(t, "updated", updated.Username)
 	require.True(t, updated.IsStaff)
 	require.True(t, updated.CanApprove)
+	require.True(t, updated.MustResetPassword)
+	require.Equal(t, "saml", updated.AuthSource)
 }
 
 func TestHandleUserPassword(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	passwordHash := hashPasswordForTest(t, "password")
-	target, err := memStore.AddUser("reset", passwordHash, false, false, true)
+	target, err := memStore.AddUser("reset", passwordHash, false, false, true, false, "local")
 	require.NoError(t, err)
 
 	form := url.Values{}
-	form.Set("password", "newpass")
+	form.Set("password", "Str0ng!Passw0rd")
 	rec := httptest.NewRecorder()
 	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/admin/users/"+intToString(target.ID)+"/password/", form, "admin")
 	serveProtected(server, rec, req, server.handleUserPassword)
@@ -294,13 +378,14 @@ func TestHandleUserPassword(t *testing.T) {
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	updated, err := memStore.GetUserByID(target.ID)
 	require.NoError(t, err)
-	require.True(t, verifyPassword("newpass", updated.PasswordHash))
+	require.True(t, verifyPassword("Str0ng!Passw0rd", updated.PasswordHash))
+	require.False(t, updated.MustResetPassword)
 }
 
 func TestHandleUserDelete(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	passwordHash := hashPasswordForTest(t, "password")
-	target, err := memStore.AddUser("remove", passwordHash, false, false, true)
+	target, err := memStore.AddUser("remove", passwordHash, false, false, true, false, "local")
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()

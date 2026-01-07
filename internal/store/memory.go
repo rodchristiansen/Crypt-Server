@@ -239,7 +239,7 @@ func (s *MemoryStore) ApproveRequest(requestID int, approved bool, reason, appro
 	return request, nil
 }
 
-func (s *MemoryStore) AddUser(username, passwordHash string, isStaff, canApprove, hasUsablePassword bool) (*User, error) {
+func (s *MemoryStore) AddUser(username, passwordHash string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -254,7 +254,9 @@ func (s *MemoryStore) AddUser(username, passwordHash string, isStaff, canApprove
 		PasswordHash:      passwordHash,
 		IsStaff:           isStaff,
 		CanApprove:        canApprove,
-		HasUsablePassword: hasUsablePassword,
+		LocalLoginEnabled: localLoginEnabled,
+		MustResetPassword: mustResetPassword,
+		AuthSource:        authSource,
 	}
 	s.nextUserID++
 	s.users[user.ID] = user
@@ -298,7 +300,7 @@ func (s *MemoryStore) GetUserByID(id int) (*User, error) {
 	return user, nil
 }
 
-func (s *MemoryStore) UpdateUser(id int, username string, isStaff, canApprove, hasUsablePassword bool) (*User, error) {
+func (s *MemoryStore) UpdateUser(id int, username string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -314,11 +316,13 @@ func (s *MemoryStore) UpdateUser(id int, username string, isStaff, canApprove, h
 	user.Username = username
 	user.IsStaff = isStaff
 	user.CanApprove = canApprove
-	user.HasUsablePassword = hasUsablePassword
+	user.LocalLoginEnabled = localLoginEnabled
+	user.MustResetPassword = mustResetPassword
+	user.AuthSource = authSource
 	return user, nil
 }
 
-func (s *MemoryStore) UpdateUserPassword(id int, passwordHash string, hasUsablePassword bool) (*User, error) {
+func (s *MemoryStore) UpdateUserPassword(id int, passwordHash string, mustResetPassword bool) (*User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -327,7 +331,10 @@ func (s *MemoryStore) UpdateUserPassword(id int, passwordHash string, hasUsableP
 		return nil, ErrNotFound
 	}
 	user.PasswordHash = passwordHash
-	user.HasUsablePassword = hasUsablePassword
+	user.MustResetPassword = mustResetPassword
+	if passwordHash != "" {
+		user.LocalLoginEnabled = true
+	}
 	return user, nil
 }
 

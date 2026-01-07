@@ -514,7 +514,8 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 			Title: "New User",
 			User:  s.currentUser(r),
 			NewUser: UserForm{
-				HasUsablePassword: true,
+				LocalLoginEnabled: true,
+				AuthSource:        "local",
 			},
 		}
 		if err := s.renderTemplate(w, r, "user_new", data); err != nil {
@@ -529,8 +530,13 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 		password := r.FormValue("password")
 		isStaff := r.FormValue("is_staff") == "on"
 		canApprove := r.FormValue("can_approve") == "on"
-		hasPassword := r.FormValue("has_usable_password") == "on"
-		if username == "" || (hasPassword && password == "") {
+		localLoginEnabled := r.FormValue("local_login_enabled") == "on"
+		mustReset := r.FormValue("must_reset_password") == "on"
+		authSource := strings.TrimSpace(r.FormValue("auth_source"))
+		if authSource == "" {
+			authSource = "local"
+		}
+		if username == "" || (localLoginEnabled && password == "") {
 			data := TemplateData{
 				Title:        "New User",
 				User:         s.currentUser(r),
@@ -539,7 +545,9 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 					Username:          username,
 					IsStaff:           isStaff,
 					CanApprove:        canApprove,
-					HasUsablePassword: hasPassword,
+					LocalLoginEnabled: localLoginEnabled,
+					MustResetPassword: mustReset,
+					AuthSource:        authSource,
 				},
 			}
 			if err := s.renderTemplate(w, r, "user_new", data); err != nil {
@@ -556,7 +564,9 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 					Username:          username,
 					IsStaff:           isStaff,
 					CanApprove:        canApprove,
-					HasUsablePassword: hasPassword,
+					LocalLoginEnabled: localLoginEnabled,
+					MustResetPassword: mustReset,
+					AuthSource:        authSource,
 				},
 			}
 			if err := s.renderTemplate(w, r, "user_new", data); err != nil {
@@ -568,7 +578,7 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var passwordHash string
-		if hasPassword {
+		if localLoginEnabled {
 			var err error
 			passwordHash, err = hashPassword(password)
 			if err != nil {
@@ -576,7 +586,7 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		if _, err := s.store.AddUser(username, passwordHash, isStaff, canApprove, hasPassword); err != nil {
+		if _, err := s.store.AddUser(username, passwordHash, isStaff, canApprove, localLoginEnabled, mustReset, authSource); err != nil {
 			s.renderError(w, err)
 			return
 		}
@@ -611,7 +621,9 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 				Username:          user.Username,
 				IsStaff:           user.IsStaff,
 				CanApprove:        user.CanApprove,
-				HasUsablePassword: user.HasUsablePassword,
+				LocalLoginEnabled: user.LocalLoginEnabled,
+				MustResetPassword: user.MustResetPassword,
+				AuthSource:        user.AuthSource,
 			},
 		}
 		if err := s.renderTemplate(w, r, "user_edit", data); err != nil {
@@ -625,7 +637,12 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 		username := strings.TrimSpace(r.FormValue("username"))
 		isStaff := r.FormValue("is_staff") == "on"
 		canApprove := r.FormValue("can_approve") == "on"
-		hasPassword := r.FormValue("has_usable_password") == "on"
+		localLoginEnabled := r.FormValue("local_login_enabled") == "on"
+		mustReset := r.FormValue("must_reset_password") == "on"
+		authSource := strings.TrimSpace(r.FormValue("auth_source"))
+		if authSource == "" {
+			authSource = "local"
+		}
 		if username == "" {
 			data := TemplateData{
 				Title:        "Edit User",
@@ -636,7 +653,9 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 					Username:          username,
 					IsStaff:           isStaff,
 					CanApprove:        canApprove,
-					HasUsablePassword: hasPassword,
+					LocalLoginEnabled: localLoginEnabled,
+					MustResetPassword: mustReset,
+					AuthSource:        authSource,
 				},
 			}
 			if err := s.renderTemplate(w, r, "user_edit", data); err != nil {
@@ -654,7 +673,9 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 					Username:          username,
 					IsStaff:           isStaff,
 					CanApprove:        canApprove,
-					HasUsablePassword: hasPassword,
+					LocalLoginEnabled: localLoginEnabled,
+					MustResetPassword: mustReset,
+					AuthSource:        authSource,
 				},
 			}
 			if err := s.renderTemplate(w, r, "user_edit", data); err != nil {
@@ -665,7 +686,7 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 			s.renderError(w, err)
 			return
 		}
-		updated, err := s.store.UpdateUser(user.ID, username, isStaff, canApprove, hasPassword)
+		updated, err := s.store.UpdateUser(user.ID, username, isStaff, canApprove, localLoginEnabled, mustReset, authSource)
 		if err != nil {
 			s.renderError(w, err)
 			return
@@ -720,7 +741,7 @@ func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
 			s.renderError(w, err)
 			return
 		}
-		if _, err := s.store.UpdateUserPassword(user.ID, passwordHash, true); err != nil {
+		if _, err := s.store.UpdateUserPassword(user.ID, passwordHash, false); err != nil {
 			s.renderError(w, err)
 			return
 		}
@@ -774,6 +795,102 @@ func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
+	user := s.currentUser(r)
+	if !user.LocalLoginEnabled {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		data := TemplateData{
+			Title:                         "Change Password",
+			User:                          user,
+			PasswordChangeRequiresCurrent: true,
+		}
+		if err := s.renderTemplate(w, r, "password_change", data); err != nil {
+			s.renderError(w, err)
+		}
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		current := r.FormValue("current_password")
+		next := r.FormValue("new_password")
+		dbUser, err := s.store.GetUserByUsername(user.Username)
+		if err != nil || dbUser.PasswordHash == "" || !verifyPassword(current, dbUser.PasswordHash) {
+			data := TemplateData{
+				Title:                         "Change Password",
+				User:                          user,
+				ErrorMessage:                  "Current password is incorrect.",
+				PasswordChangeRequiresCurrent: true,
+			}
+			if err := s.renderTemplate(w, r, "password_change", data); err != nil {
+				s.renderError(w, err)
+			}
+			return
+		}
+		hash, err := hashPassword(next)
+		if err != nil {
+			s.renderError(w, err)
+			return
+		}
+		if _, err := s.store.UpdateUserPassword(user.ID, hash, false); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
+	user := s.currentUser(r)
+	if !user.LocalLoginEnabled {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if !user.MustResetPassword {
+		http.Redirect(w, r, "/password/change/", http.StatusSeeOther)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		data := TemplateData{
+			Title:                         "Reset Password",
+			User:                          user,
+			PasswordChangeRequiresCurrent: false,
+		}
+		if err := s.renderTemplate(w, r, "password_change", data); err != nil {
+			s.renderError(w, err)
+		}
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		next := r.FormValue("new_password")
+		hash, err := hashPassword(next)
+		if err != nil {
+			s.renderError(w, err)
+			return
+		}
+		if _, err := s.store.UpdateUserPassword(user.ID, hash, false); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleSAMLLogin(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "SAML login not configured", http.StatusNotImplemented)
+}
+
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -791,7 +908,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		next := r.FormValue("next")
 
 		user, err := s.store.GetUserByUsername(username)
-		if err != nil || !user.HasUsablePassword || user.PasswordHash == "" {
+		if err != nil || !user.LocalLoginEnabled || user.PasswordHash == "" {
 			s.renderLoginError(w, r, "Invalid username or password.")
 			return
 		}
@@ -805,6 +922,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.sessionManager.SetCookie(w, token, s.settings.CookieSecure)
+		if user.MustResetPassword && user.LocalLoginEnabled {
+			next = "/password/reset/"
+		}
 		if next == "" || !strings.HasPrefix(next, "/") {
 			next = "/"
 		}
@@ -916,8 +1036,10 @@ func mapStoreUser(user *store.User) User {
 		ID:                user.ID,
 		Username:          user.Username,
 		IsStaff:           user.IsStaff,
-		HasUsablePassword: user.HasUsablePassword,
 		CanApprove:        user.CanApprove,
+		LocalLoginEnabled: user.LocalLoginEnabled,
+		MustResetPassword: user.MustResetPassword,
+		AuthSource:        user.AuthSource,
 	}
 }
 

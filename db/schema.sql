@@ -34,5 +34,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NULL,
     is_staff BOOLEAN NOT NULL DEFAULT FALSE,
     can_approve BOOLEAN NOT NULL DEFAULT FALSE,
-    has_usable_password BOOLEAN NOT NULL DEFAULT FALSE
+    local_login_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    must_reset_password BOOLEAN NOT NULL DEFAULT FALSE,
+    auth_source TEXT NOT NULL DEFAULT 'local'
 );

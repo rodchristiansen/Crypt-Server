@@ -35,6 +35,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 	mux.HandleFunc("/login/", s.handleLogin)
 	mux.HandleFunc("/logout/", s.handleLogout)
+	mux.HandleFunc("/saml/login/", s.handleSAMLLogin)
 	mux.HandleFunc("/checkin/", s.handleCheckin)
 	mux.HandleFunc("/verify/", s.handleVerify)
 	mux.HandleFunc("/", s.requireAuth(s.handleIndex))
@@ -48,6 +49,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/approve/", s.requireAuth(s.handleApprove))
 	mux.HandleFunc("/manage-requests/", s.requireAuth(s.handleManageRequests))
 	mux.HandleFunc("/admin/users/", s.requireAuth(s.handleAdminUsers))
+	mux.HandleFunc("/password/change/", s.requireAuth(s.handlePasswordChange))
+	mux.HandleFunc("/password/reset/", s.requireAuth(s.handlePasswordReset))
 
 	return withTrailingSlashRedirect(s.withCSRF(s.withUser(mux)))
 }
@@ -67,6 +70,10 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		user := s.currentUser(r)
 		if !user.IsAuthenticated {
 			http.Redirect(w, r, "/login/?next="+urlQueryEscape(r.URL.Path), http.StatusSeeOther)
+			return
+		}
+		if user.MustResetPassword && user.LocalLoginEnabled && r.URL.Path != "/password/reset/" && r.URL.Path != "/logout/" {
+			http.Redirect(w, r, "/password/reset/", http.StatusSeeOther)
 			return
 		}
 		next(w, r)

@@ -13,7 +13,9 @@
           <th>Username</th>
           <th>Staff</th>
           <th>Can Approve</th>
-          <th>Has Password</th>
+          <th>Local Login</th>
+          <th>Must Reset</th>
+          <th>Auth Source</th>
           <th></th>
         </tr>
       </thead>
@@ -23,7 +25,9 @@
           <td>{{.Username}}</td>
           <td>{{if .IsStaff}}Yes{{else}}No{{end}}</td>
           <td>{{if .CanApprove}}Yes{{else}}No{{end}}</td>
-          <td>{{if .HasUsablePassword}}Yes{{else}}No{{end}}</td>
+          <td>{{if .LocalLoginEnabled}}Yes{{else}}No{{end}}</td>
+          <td>{{if .MustResetPassword}}Yes{{else}}No{{end}}</td>
+          <td>{{.AuthSource}}</td>
           <td>
             <a class="btn btn-sm btn-outline-primary" href="/admin/users/{{.ID}}/edit/">Edit</a>
             <a class="btn btn-sm btn-outline-secondary" href="/admin/users/{{.ID}}/password/">Reset Password</a>

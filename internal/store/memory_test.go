@@ -62,7 +62,7 @@ func TestMemoryStoreSecretAndRequestLifecycle(t *testing.T) {
 
 func TestMemoryStoreUserLifecycle(t *testing.T) {
 	store := NewMemoryStore(testCodec(t))
-	user, err := store.AddUser("admin", "hash", true, true, true)
+	user, err := store.AddUser("admin", "hash", true, true, true, false, "local")
 	require.NoError(t, err)
 	require.NotZero(t, user.ID)
 
@@ -74,9 +74,9 @@ func TestMemoryStoreUserLifecycle(t *testing.T) {
 
 func TestMemoryStoreListUsers(t *testing.T) {
 	store := NewMemoryStore(testCodec(t))
-	_, err := store.AddUser("first", "hash", true, false, true)
+	_, err := store.AddUser("first", "hash", true, false, true, false, "local")
 	require.NoError(t, err)
-	_, err = store.AddUser("second", "hash", false, true, true)
+	_, err = store.AddUser("second", "hash", false, true, true, false, "local")
 	require.NoError(t, err)
 
 	users, err := store.ListUsers()
@@ -88,20 +88,22 @@ func TestMemoryStoreListUsers(t *testing.T) {
 
 func TestMemoryStoreUpdateAndDeleteUser(t *testing.T) {
 	store := NewMemoryStore(testCodec(t))
-	user, err := store.AddUser("first", "hash", true, false, true)
+	user, err := store.AddUser("first", "hash", true, false, true, false, "local")
 	require.NoError(t, err)
 
-	updated, err := store.UpdateUser(user.ID, "updated", false, true, false)
+	updated, err := store.UpdateUser(user.ID, "updated", false, true, false, true, "saml")
 	require.NoError(t, err)
 	require.Equal(t, "updated", updated.Username)
 	require.False(t, updated.IsStaff)
 	require.True(t, updated.CanApprove)
-	require.False(t, updated.HasUsablePassword)
+	require.False(t, updated.LocalLoginEnabled)
+	require.True(t, updated.MustResetPassword)
 
-	updated, err = store.UpdateUserPassword(user.ID, "newhash", true)
+	updated, err = store.UpdateUserPassword(user.ID, "newhash", false)
 	require.NoError(t, err)
 	require.Equal(t, "newhash", updated.PasswordHash)
-	require.True(t, updated.HasUsablePassword)
+	require.True(t, updated.LocalLoginEnabled)
+	require.False(t, updated.MustResetPassword)
 
 	err = store.DeleteUser(user.ID)
 	require.NoError(t, err)

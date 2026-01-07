@@ -286,13 +286,13 @@ func (s *PostgresStore) ApproveRequest(requestID int, approved bool, reason, app
 	return updated, nil
 }
 
-func (s *PostgresStore) AddUser(username, passwordHash string, isStaff, canApprove, hasUsablePassword bool) (*User, error) {
+func (s *PostgresStore) AddUser(username, passwordHash string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*User, error) {
 	var id int
 	err := s.db.QueryRow(
-		`INSERT INTO users (username, password_hash, is_staff, can_approve, has_usable_password)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO users (username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id`,
-		username, nullableString(passwordHash), isStaff, canApprove, hasUsablePassword,
+		username, nullableString(passwordHash), isStaff, canApprove, localLoginEnabled, mustResetPassword, authSource,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert user: %w", err)
@@ -303,7 +303,9 @@ func (s *PostgresStore) AddUser(username, passwordHash string, isStaff, canAppro
 		PasswordHash:      passwordHash,
 		IsStaff:           isStaff,
 		CanApprove:        canApprove,
-		HasUsablePassword: hasUsablePassword,
+		LocalLoginEnabled: localLoginEnabled,
+		MustResetPassword: mustResetPassword,
+		AuthSource:        authSource,
 	}, nil
 }
 
@@ -311,11 +313,11 @@ func (s *PostgresStore) GetUserByUsername(username string) (*User, error) {
 	var user User
 	var passwordHash sql.NullString
 	row := s.db.QueryRow(
-		`SELECT id, username, password_hash, is_staff, can_approve, has_usable_password
+		`SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source
 		 FROM users WHERE lower(username) = lower($1)`,
 		username,
 	)
-	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.HasUsablePassword); err != nil {
+	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.LocalLoginEnabled, &user.MustResetPassword, &user.AuthSource); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
@@ -328,7 +330,7 @@ func (s *PostgresStore) GetUserByUsername(username string) (*User, error) {
 }
 
 func (s *PostgresStore) ListUsers() ([]*User, error) {
-	rows, err := s.db.Query(`SELECT id, username, password_hash, is_staff, can_approve, has_usable_password FROM users ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source FROM users ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
@@ -338,7 +340,7 @@ func (s *PostgresStore) ListUsers() ([]*User, error) {
 	for rows.Next() {
 		var user User
 		var passwordHash sql.NullString
-		if err := rows.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.HasUsablePassword); err != nil {
+		if err := rows.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.LocalLoginEnabled, &user.MustResetPassword, &user.AuthSource); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		if passwordHash.Valid {
@@ -353,11 +355,11 @@ func (s *PostgresStore) GetUserByID(id int) (*User, error) {
 	var user User
 	var passwordHash sql.NullString
 	row := s.db.QueryRow(
-		`SELECT id, username, password_hash, is_staff, can_approve, has_usable_password
+		`SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source
 		 FROM users WHERE id = $1`,
 		id,
 	)
-	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.HasUsablePassword); err != nil {
+	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.LocalLoginEnabled, &user.MustResetPassword, &user.AuthSource); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
@@ -369,17 +371,17 @@ func (s *PostgresStore) GetUserByID(id int) (*User, error) {
 	return &user, nil
 }
 
-func (s *PostgresStore) UpdateUser(id int, username string, isStaff, canApprove, hasUsablePassword bool) (*User, error) {
+func (s *PostgresStore) UpdateUser(id int, username string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*User, error) {
 	var user User
 	var passwordHash sql.NullString
 	row := s.db.QueryRow(
 		`UPDATE users
-		 SET username = $1, is_staff = $2, can_approve = $3, has_usable_password = $4
-		 WHERE id = $5
-		 RETURNING id, username, password_hash, is_staff, can_approve, has_usable_password`,
-		username, isStaff, canApprove, hasUsablePassword, id,
+		 SET username = $1, is_staff = $2, can_approve = $3, local_login_enabled = $4, must_reset_password = $5, auth_source = $6
+		 WHERE id = $7
+		 RETURNING id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source`,
+		username, isStaff, canApprove, localLoginEnabled, mustResetPassword, authSource, id,
 	)
-	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.HasUsablePassword); err != nil {
+	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.LocalLoginEnabled, &user.MustResetPassword, &user.AuthSource); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
@@ -391,17 +393,17 @@ func (s *PostgresStore) UpdateUser(id int, username string, isStaff, canApprove,
 	return &user, nil
 }
 
-func (s *PostgresStore) UpdateUserPassword(id int, passwordHash string, hasUsablePassword bool) (*User, error) {
+func (s *PostgresStore) UpdateUserPassword(id int, passwordHash string, mustResetPassword bool) (*User, error) {
 	var user User
 	var hash sql.NullString
 	row := s.db.QueryRow(
 		`UPDATE users
-		 SET password_hash = $1, has_usable_password = $2
+		 SET password_hash = $1, must_reset_password = $2, local_login_enabled = CASE WHEN $1 IS NULL THEN local_login_enabled ELSE true END
 		 WHERE id = $3
-		 RETURNING id, username, password_hash, is_staff, can_approve, has_usable_password`,
-		nullableString(passwordHash), hasUsablePassword, id,
+		 RETURNING id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source`,
+		nullableString(passwordHash), mustResetPassword, id,
 	)
-	if err := row.Scan(&user.ID, &user.Username, &hash, &user.IsStaff, &user.CanApprove, &user.HasUsablePassword); err != nil {
+	if err := row.Scan(&user.ID, &user.Username, &hash, &user.IsStaff, &user.CanApprove, &user.LocalLoginEnabled, &user.MustResetPassword, &user.AuthSource); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
