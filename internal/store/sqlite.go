@@ -171,11 +171,11 @@ func (s *SQLiteStore) ListSecretsByComputer(computerID int) ([]*Secret, error) {
 
 	secrets := make([]*Secret, 0)
 	for rows.Next() {
-		var secret Secret
-		if err := rows.Scan(&secret.ID, &secret.ComputerID, &secret.SecretType, &secret.Secret, &secret.DateEscrowed, &secret.RotationRequired); err != nil {
-			return nil, fmt.Errorf("scan secret: %w", err)
+		secret, err := scanSecret(rows)
+		if err != nil {
+			return nil, err
 		}
-		decrypted, err := s.decryptSecret(&secret)
+		decrypted, err := s.decryptSecret(secret)
 		if err != nil {
 			return nil, err
 		}
@@ -185,30 +185,30 @@ func (s *SQLiteStore) ListSecretsByComputer(computerID int) ([]*Secret, error) {
 }
 
 func (s *SQLiteStore) GetSecretByID(id int) (*Secret, error) {
-	var secret Secret
 	row := s.db.QueryRow("SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE id = ?", id)
-	if err := row.Scan(&secret.ID, &secret.ComputerID, &secret.SecretType, &secret.Secret, &secret.DateEscrowed, &secret.RotationRequired); err != nil {
+	secret, err := scanSecret(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get secret: %w", err)
 	}
-	return s.decryptSecret(&secret)
+	return s.decryptSecret(secret)
 }
 
 func (s *SQLiteStore) GetLatestSecretByComputerAndType(computerID int, secretType string) (*Secret, error) {
-	var secret Secret
 	row := s.db.QueryRow(
 		"SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE computer_id = ? AND secret_type = ? ORDER BY date_escrowed DESC LIMIT 1",
 		computerID, secretType,
 	)
-	if err := row.Scan(&secret.ID, &secret.ComputerID, &secret.SecretType, &secret.Secret, &secret.DateEscrowed, &secret.RotationRequired); err != nil {
+	secret, err := scanSecret(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get latest secret: %w", err)
 	}
-	return s.decryptSecret(&secret)
+	return s.decryptSecret(secret)
 }
 
 func (s *SQLiteStore) AddRequest(secretID int, requestingUser, reason string, approvedBy string, approved *bool) (*Request, error) {
@@ -470,6 +470,24 @@ func (s *SQLiteStore) CleanupRequests(approvedBefore time.Time) (int, error) {
 	return int(affected), nil
 }
 
+func (s *SQLiteStore) SetSecretRotationRequired(secretID int, rotationRequired bool) (*Secret, error) {
+	result, err := s.db.Exec(
+		"UPDATE secrets SET rotation_required = ? WHERE id = ?",
+		rotationRequired, secretID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("update secret rotation: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("update secret rotation: %w", err)
+	}
+	if affected == 0 {
+		return nil, ErrNotFound
+	}
+	return s.GetSecretByID(secretID)
+}
+
 func (s *SQLiteStore) decryptSecret(secret *Secret) (*Secret, error) {
 	if s.codec == nil {
 		return nil, ErrMissingCodec
@@ -481,4 +499,14 @@ func (s *SQLiteStore) decryptSecret(secret *Secret) (*Secret, error) {
 	clone := *secret
 	clone.Secret = plaintext
 	return &clone, nil
+}
+
+func scanSecret(row scanner) (*Secret, error) {
+	var secret Secret
+	var rotation int
+	if err := row.Scan(&secret.ID, &secret.ComputerID, &secret.SecretType, &secret.Secret, &secret.DateEscrowed, &rotation); err != nil {
+		return nil, err
+	}
+	secret.RotationRequired = rotation != 0
+	return &secret, nil
 }

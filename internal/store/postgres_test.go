@@ -280,3 +280,23 @@ func TestPostgresStoreCleanupRequests(t *testing.T) {
 	require.Equal(t, 2, updated)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestPostgresStoreSetSecretRotationRequired(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	codec := testCodec(t)
+	store := NewPostgresStoreWithDB(db, codec)
+	now := time.Now()
+	encrypted, err := codec.Encrypt("secret")
+	require.NoError(t, err)
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"UPDATE secrets SET rotation_required = $1 WHERE id = $2 RETURNING id, computer_id, secret_type, secret, date_escrowed, rotation_required",
+	)).WithArgs(true, 5).WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(5, 2, "password", encrypted, now, true))
+
+	updated, err := store.SetSecretRotationRequired(5, true)
+	require.NoError(t, err)
+	require.True(t, updated.RotationRequired)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

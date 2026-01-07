@@ -36,4 +36,5 @@ type Store interface {
 	UpdateUserPassword(id int, passwordHash string, mustResetPassword bool) (*User, error)
 	DeleteUser(id int) error
 	CleanupRequests(approvedBefore time.Time) (int, error)
+	SetSecretRotationRequired(secretID int, rotationRequired bool) (*Secret, error)
 }

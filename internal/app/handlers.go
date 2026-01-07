@@ -398,6 +398,14 @@ func (s *Server) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if s.settings.RotateViewedSecrets {
+		updated, err := s.store.SetSecretRotationRequired(secret.ID, true)
+		if err != nil {
+			s.renderError(w, err)
+			return
+		}
+		secret = updated
+	}
 
 	computer, err := s.store.GetComputerByID(secret.ComputerID)
 	if err != nil {

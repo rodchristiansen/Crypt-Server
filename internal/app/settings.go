@@ -8,4 +8,5 @@ type Settings struct {
 	SessionTTL             time.Duration
 	CookieSecure           bool
 	RequestCleanupInterval time.Duration
+	RotateViewedSecrets    bool
 }

@@ -491,6 +491,24 @@ func (s *PostgresStore) CleanupRequests(approvedBefore time.Time) (int, error) {
 	return int(affected), nil
 }
 
+func (s *PostgresStore) SetSecretRotationRequired(secretID int, rotationRequired bool) (*Secret, error) {
+	var secret Secret
+	row := s.db.QueryRow(
+		`UPDATE secrets
+		 SET rotation_required = $1
+		 WHERE id = $2
+		 RETURNING id, computer_id, secret_type, secret, date_escrowed, rotation_required`,
+		rotationRequired, secretID,
+	)
+	if err := row.Scan(&secret.ID, &secret.ComputerID, &secret.SecretType, &secret.Secret, &secret.DateEscrowed, &secret.RotationRequired); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("update secret rotation: %w", err)
+	}
+	return s.decryptSecret(&secret)
+}
+
 func (s *PostgresStore) decryptSecret(secret *Secret) (*Secret, error) {
 	if s.codec == nil {
 		return nil, ErrMissingCodec

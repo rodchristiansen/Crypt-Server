@@ -88,6 +88,7 @@ func main() {
 		SessionTTL:             sessionTTL,
 		CookieSecure:           envBool("SESSION_COOKIE_SECURE", false),
 		RequestCleanupInterval: time.Hour,
+		RotateViewedSecrets:    envBool("ROTATE_VIEWED_SECRETS", false),
 	}
 	csrfManager := app.NewCSRFManager("crypt_csrf", 32)
 

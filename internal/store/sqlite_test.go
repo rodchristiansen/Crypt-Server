@@ -15,7 +15,8 @@ func TestSQLiteStoreAddComputer(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	store := NewSQLiteStoreWithDB(db, testCodec(t))
+	codec := testCodec(t)
+	store := NewSQLiteStoreWithDB(db, codec)
 	lastCheckin := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) RETURNING id, last_checkin",
@@ -161,7 +162,7 @@ func TestSQLiteStoreGetSecretAndRequests(t *testing.T) {
 	require.NoError(t, err)
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE id = ?",
-	)).WithArgs(2).WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(2, 1, "password", encryptedSecret, now, false))
+	)).WithArgs(2).WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(2, 1, "password", encryptedSecret, now, 0))
 
 	secret, err := store.GetSecretByID(2)
 	require.NoError(t, err)
@@ -170,7 +171,7 @@ func TestSQLiteStoreGetSecretAndRequests(t *testing.T) {
 
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE computer_id = ? AND secret_type = ? ORDER BY date_escrowed DESC LIMIT 1",
-	)).WithArgs(1, "password").WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(3, 1, "password", encryptedSecret, now, true))
+	)).WithArgs(1, "password").WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(3, 1, "password", encryptedSecret, now, 1))
 
 	latest, err := store.GetLatestSecretByComputerAndType(1, "password")
 	require.NoError(t, err)
@@ -181,7 +182,7 @@ func TestSQLiteStoreGetSecretAndRequests(t *testing.T) {
 	require.NoError(t, err)
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE computer_id = ? ORDER BY id",
-	)).WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(2, 1, "password", encryptedSecret2, now, false))
+	)).WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(2, 1, "password", encryptedSecret2, now, 0))
 
 	secrets, err := store.ListSecretsByComputer(1)
 	require.NoError(t, err)
@@ -293,5 +294,29 @@ func TestSQLiteStoreCleanupRequests(t *testing.T) {
 	updated, err := store.CleanupRequests(cutoff)
 	require.NoError(t, err)
 	require.Equal(t, 3, updated)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSQLiteStoreSetSecretRotationRequired(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	codec := testCodec(t)
+	store := NewSQLiteStoreWithDB(db, codec)
+	mock.ExpectExec(regexp.QuoteMeta(
+		"UPDATE secrets SET rotation_required = ? WHERE id = ?",
+	)).WithArgs(true, 7).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	encrypted, err := codec.Encrypt("secret")
+	require.NoError(t, err)
+	now := time.Now()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE id = ?",
+	)).WithArgs(7).WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(7, 2, "password", encrypted, now, 1))
+
+	updated, err := store.SetSecretRotationRequired(7, true)
+	require.NoError(t, err)
+	require.True(t, updated.RotationRequired)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

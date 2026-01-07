@@ -22,26 +22,11 @@ import (
 
 func newTestServer(t *testing.T) (*Server, store.Store, *SessionManager) {
 	t.Helper()
-	root := filepath.Join("..", "..")
-	layout := filepath.Join(root, "web", "templates", "layouts", "base.html")
-	pages := filepath.Join(root, "web", "templates", "pages")
-	renderer := NewRenderer(layout, pages)
 	codec := testCodec(t)
 	dataStore := newTestSQLiteStore(t, codec)
-	logger := log.New(io.Discard, "", 0)
-	sessionManager, err := NewSessionManager([]byte("test-session-key-32-bytes-long!!"), "crypt_session", time.Hour)
-	require.NoError(t, err)
-	settings := Settings{
-		ApproveOwn:             true,
-		AllApprove:             false,
-		SessionTTL:             time.Hour,
-		CookieSecure:           false,
-		RequestCleanupInterval: 0,
-	}
-	csrfManager := NewCSRFManager("crypt_csrf", 32)
-	server := NewServer(dataStore, renderer, logger, sessionManager, csrfManager, nil, nil, settings)
+	server, sessionManager := newTestServerWithStore(t, dataStore)
 	passwordHash := hashPasswordForTest(t, "password")
-	_, err = dataStore.AddUser("admin", passwordHash, true, true, true, false, "local")
+	_, err := dataStore.AddUser("admin", passwordHash, true, true, true, false, "local")
 	require.NoError(t, err)
 	return server, dataStore, sessionManager
 }
@@ -55,6 +40,38 @@ func newTestSQLiteStore(t *testing.T, codec *crypto.AesGcmCodec) *store.SQLiteSt
 	require.NoError(t, err)
 	require.NoError(t, migrate.Apply(sqliteStore.DB(), "sqlite", migrationFS))
 	return sqliteStore
+}
+
+func newTestServerWithStore(t *testing.T, dataStore store.Store) (*Server, *SessionManager) {
+	t.Helper()
+	root := filepath.Join("..", "..")
+	layout := filepath.Join(root, "web", "templates", "layouts", "base.html")
+	pages := filepath.Join(root, "web", "templates", "pages")
+	renderer := NewRenderer(layout, pages)
+	logger := log.New(io.Discard, "", 0)
+	sessionManager, err := NewSessionManager([]byte("test-session-key-32-bytes-long!!"), "crypt_session", time.Hour)
+	require.NoError(t, err)
+	settings := Settings{
+		ApproveOwn:             true,
+		AllApprove:             false,
+		SessionTTL:             time.Hour,
+		CookieSecure:           false,
+		RequestCleanupInterval: 0,
+		RotateViewedSecrets:    false,
+	}
+	csrfManager := NewCSRFManager("crypt_csrf", 32)
+	server := NewServer(dataStore, renderer, logger, sessionManager, csrfManager, nil, nil, settings)
+	return server, sessionManager
+}
+
+type rotationTrackingStore struct {
+	*store.SQLiteStore
+	called bool
+}
+
+func (s *rotationTrackingStore) SetSecretRotationRequired(secretID int, rotationRequired bool) (*store.Secret, error) {
+	s.called = true
+	return s.SQLiteStore.SetSecretRotationRequired(secretID, rotationRequired)
 }
 
 func TestHandleIndex(t *testing.T) {
@@ -135,6 +152,43 @@ func TestRequestApproveRetrieveFlow(t *testing.T) {
 	serveProtected(server, retrieveRec, retrieveReq, server.handleRetrieve)
 	require.Equal(t, http.StatusOK, retrieveRec.Code)
 	require.Contains(t, retrieveRec.Body.String(), "class=\"letter\">s")
+}
+
+func TestRetrieveMarksRotationRequired(t *testing.T) {
+	codec := testCodec(t)
+	sqliteStore := newTestSQLiteStore(t, codec)
+	dataStore := &rotationTrackingStore{SQLiteStore: sqliteStore}
+	server, sessionManager := newTestServerWithStore(t, dataStore)
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := dataStore.AddUser("admin", passwordHash, true, true, true, false, "local")
+	require.NoError(t, err)
+	server.settings.RotateViewedSecrets = true
+	require.True(t, server.settings.RotateViewedSecrets)
+	computer, err := dataStore.AddComputer("SERIALROTATE", "user", "MacBook Pro")
+	require.NoError(t, err)
+	secret, err := dataStore.AddSecret(computer.ID, "recovery_key", "secret-value", false)
+	require.NoError(t, err)
+	initial, err := dataStore.GetSecretByID(secret.ID)
+	require.NoError(t, err)
+	require.False(t, initial.RotationRequired)
+	approved := true
+	req, err := dataStore.AddRequest(secret.ID, "admin", "Need access", "approver", &approved)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	retrieveReq := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/retrieve/"+intToString(req.ID)+"/", nil, "admin")
+	serveProtected(server, rec, retrieveReq, server.handleRetrieve)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, dataStore.called)
+
+	var rotation int
+	row := sqliteStore.DB().QueryRow("SELECT rotation_required FROM secrets WHERE id = ?", secret.ID)
+	require.NoError(t, row.Scan(&rotation))
+	require.Equal(t, 1, rotation)
+
+	updated, err := dataStore.GetSecretByID(secret.ID)
+	require.NoError(t, err)
+	require.True(t, updated.RotationRequired)
 }
 
 func TestHandleManageRequests(t *testing.T) {
