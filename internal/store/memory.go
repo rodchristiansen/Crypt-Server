@@ -392,6 +392,23 @@ func (s *MemoryStore) DeleteUser(id int) error {
 	return nil
 }
 
+func (s *MemoryStore) CleanupRequests(approvedBefore time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	updated := 0
+	for _, request := range s.requests {
+		if !request.Current || request.Approved == nil || request.DateApproved == nil {
+			continue
+		}
+		if request.DateApproved.Before(approvedBefore) {
+			request.Current = false
+			updated++
+		}
+	}
+	return updated, nil
+}
+
 func (s *MemoryStore) decryptSecret(secret *Secret) (*Secret, error) {
 	if s.codec == nil {
 		return nil, ErrMissingCodec

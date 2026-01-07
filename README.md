@@ -56,6 +56,10 @@ All settings that would be entered into `settings.py` can also be passed into th
 
 - `SESSION_KEY` - A random string (at least 32 bytes) used to sign session cookies. This is required.
 
+- `DATABASE_URL` - Postgres connection string. Mutually exclusive with `SQLITE_PATH`.
+
+- `SQLITE_PATH` - SQLite database file path. Must be a file (no in-memory databases). Mutually exclusive with `DATABASE_URL`.
+
 - `SESSION_COOKIE_SECURE` - Set to `true` to mark session cookies as secure (recommended when using HTTPS).
 
 - `SAML_CONFIG_FILE` - Path to a YAML file containing SAML configuration. See `docs/saml-config.sample.yaml` for all supported fields.
@@ -73,6 +77,24 @@ All settings that would be entered into `settings.py` can also be passed into th
 - `HOST_NAME` - Set the host name of your instance - required if you do not have control over the load balancer or proxy in front of your Crypt server (see [the Django documentation](https://docs.djangoproject.com/en/4.1/ref/settings/#csrf-trusted-origins)).
 
 - `CSRF_TRUSTED_ORIGINS` - Is a list of trusted origins expected to make requests to your Crypt instance, normally this is the hostname
+
+## Database migrations
+
+The Go server applies embedded SQL migrations on startup and records applied versions in `schema_migrations`.
+
+Migration file naming: `NNN_description.sql` (for example, `002_add_requests.sql`).
+
+Flags:
+
+- `-validate-migrations` - Validate embedded migrations and exit.
+- `-print-migrations` - Print embedded migrations and exit.
+- `-migrations-driver` - Limit the validation/print target to `postgres` or `sqlite` (default: both).
+
+Example:
+
+```
+./crypt-server -validate-migrations -migrations-driver=postgres
+```
 ## Screenshots
 
 Main Page:

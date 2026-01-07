@@ -23,7 +23,7 @@ type Server struct {
 }
 
 func NewServer(store store.Store, renderer *Renderer, logger *log.Logger, sessionManager *SessionManager, csrfManager *CSRFManager, samlSP *samlsp.Middleware, samlConfig *SAMLConfig, settings Settings) *Server {
-	return &Server{
+	server := &Server{
 		store:          store,
 		renderer:       renderer,
 		logger:         logger,
@@ -33,6 +33,8 @@ func NewServer(store store.Store, renderer *Renderer, logger *log.Logger, sessio
 		samlConfig:     samlConfig,
 		settings:       settings,
 	}
+	server.startRequestCleanupJob()
+	return server
 }
 
 func (s *Server) Routes() http.Handler {

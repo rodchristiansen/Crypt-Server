@@ -4,50 +4,52 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	_ "modernc.org/sqlite"
 )
 
-type PostgresStore struct {
+type SQLiteStore struct {
 	db    *sql.DB
 	codec SecretCodec
 }
 
-func (s *PostgresStore) DB() *sql.DB {
+func (s *SQLiteStore) DB() *sql.DB {
 	return s.db
 }
 
-func NewPostgresStore(dbURL string, codec SecretCodec) (*PostgresStore, error) {
-	db, err := sql.Open("postgres", dbURL)
+func NewSQLiteStore(dsn string, codec SecretCodec) (*SQLiteStore, error) {
+	if dsn == "" {
+		return nil, fmt.Errorf("sqlite dsn is required")
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
-
-	return &PostgresStore{db: db, codec: codec}, nil
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		return nil, fmt.Errorf("enable foreign keys: %w", err)
+	}
+	return &SQLiteStore{db: db, codec: codec}, nil
 }
 
-func NewPostgresStoreWithDB(db *sql.DB, codec SecretCodec) *PostgresStore {
-	return &PostgresStore{db: db, codec: codec}
+func NewSQLiteStoreWithDB(db *sql.DB, codec SecretCodec) *SQLiteStore {
+	return &SQLiteStore{db: db, codec: codec}
 }
 
-func (s *PostgresStore) AddComputer(serial, username, computerName string) (*Computer, error) {
+func (s *SQLiteStore) AddComputer(serial, username, computerName string) (*Computer, error) {
+	now := time.Now()
 	var id int
 	var lastCheckin time.Time
-	err := s.db.QueryRow(
-		`INSERT INTO computers (serial, username, computername, last_checkin)
-		 VALUES ($1, $2, $3, NOW())
-		 RETURNING id, last_checkin`,
-		serial, username, computerName,
-	).Scan(&id, &lastCheckin)
-	if err != nil {
+	row := s.db.QueryRow(
+		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) RETURNING id, last_checkin",
+		serial, username, computerName, now,
+	)
+	if err := row.Scan(&id, &lastCheckin); err != nil {
 		return nil, fmt.Errorf("insert computer: %w", err)
 	}
 	return &Computer{
@@ -59,18 +61,14 @@ func (s *PostgresStore) AddComputer(serial, username, computerName string) (*Com
 	}, nil
 }
 
-func (s *PostgresStore) UpsertComputer(serial, username, computerName string, lastCheckin time.Time) (*Computer, error) {
+func (s *SQLiteStore) UpsertComputer(serial, username, computerName string, lastCheckin time.Time) (*Computer, error) {
 	var id int
 	var stored time.Time
-	err := s.db.QueryRow(
-		`INSERT INTO computers (serial, username, computername, last_checkin)
-		 VALUES ($1, $2, $3, $4)
-		 ON CONFLICT (serial)
-		 DO UPDATE SET username = EXCLUDED.username, computername = EXCLUDED.computername, last_checkin = EXCLUDED.last_checkin
-		 RETURNING id, last_checkin`,
+	row := s.db.QueryRow(
+		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) ON CONFLICT(serial) DO UPDATE SET username = excluded.username, computername = excluded.computername, last_checkin = excluded.last_checkin RETURNING id, last_checkin",
 		serial, username, computerName, lastCheckin,
-	).Scan(&id, &stored)
-	if err != nil {
+	)
+	if err := row.Scan(&id, &stored); err != nil {
 		return nil, fmt.Errorf("upsert computer: %w", err)
 	}
 	return &Computer{
@@ -82,8 +80,8 @@ func (s *PostgresStore) UpsertComputer(serial, username, computerName string, la
 	}, nil
 }
 
-func (s *PostgresStore) ListComputers() ([]*Computer, error) {
-	rows, err := s.db.Query(`SELECT id, serial, username, computername, last_checkin FROM computers ORDER BY id`)
+func (s *SQLiteStore) ListComputers() ([]*Computer, error) {
+	rows, err := s.db.Query("SELECT id, serial, username, computername, last_checkin FROM computers ORDER BY id")
 	if err != nil {
 		return nil, fmt.Errorf("list computers: %w", err)
 	}
@@ -104,10 +102,10 @@ func (s *PostgresStore) ListComputers() ([]*Computer, error) {
 	return computers, rows.Err()
 }
 
-func (s *PostgresStore) GetComputerByID(id int) (*Computer, error) {
+func (s *SQLiteStore) GetComputerByID(id int) (*Computer, error) {
 	var computer Computer
 	var lastCheckin sql.NullTime
-	row := s.db.QueryRow(`SELECT id, serial, username, computername, last_checkin FROM computers WHERE id = $1`, id)
+	row := s.db.QueryRow("SELECT id, serial, username, computername, last_checkin FROM computers WHERE id = ?", id)
 	if err := row.Scan(&computer.ID, &computer.Serial, &computer.Username, &computer.ComputerName, &lastCheckin); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
@@ -120,10 +118,10 @@ func (s *PostgresStore) GetComputerByID(id int) (*Computer, error) {
 	return &computer, nil
 }
 
-func (s *PostgresStore) GetComputerBySerial(serial string) (*Computer, error) {
+func (s *SQLiteStore) GetComputerBySerial(serial string) (*Computer, error) {
 	var computer Computer
 	var lastCheckin sql.NullTime
-	row := s.db.QueryRow(`SELECT id, serial, username, computername, last_checkin FROM computers WHERE lower(serial) = lower($1)`, serial)
+	row := s.db.QueryRow("SELECT id, serial, username, computername, last_checkin FROM computers WHERE lower(serial) = lower(?)", serial)
 	if err := row.Scan(&computer.ID, &computer.Serial, &computer.Username, &computer.ComputerName, &lastCheckin); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
@@ -136,7 +134,7 @@ func (s *PostgresStore) GetComputerBySerial(serial string) (*Computer, error) {
 	return &computer, nil
 }
 
-func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*Secret, error) {
+func (s *SQLiteStore) AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*Secret, error) {
 	if s.codec == nil {
 		return nil, ErrMissingCodec
 	}
@@ -144,18 +142,16 @@ func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rot
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
 	var id int
 	var dateEscrowed time.Time
 	row := s.db.QueryRow(
-		`INSERT INTO secrets (computer_id, secret_type, secret, date_escrowed, rotation_required)
-		 VALUES ($1, $2, $3, NOW(), $4)
-		 RETURNING id, date_escrowed`,
-		computerID, secretType, encrypted, rotationRequired,
+		"INSERT INTO secrets (computer_id, secret_type, secret, date_escrowed, rotation_required) VALUES (?, ?, ?, ?, ?) RETURNING id, date_escrowed",
+		computerID, secretType, encrypted, now, rotationRequired,
 	)
 	if err := row.Scan(&id, &dateEscrowed); err != nil {
 		return nil, fmt.Errorf("insert secret: %w", err)
 	}
-
 	return s.decryptSecret(&Secret{
 		ID:               id,
 		ComputerID:       computerID,
@@ -166,8 +162,8 @@ func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rot
 	})
 }
 
-func (s *PostgresStore) ListSecretsByComputer(computerID int) ([]*Secret, error) {
-	rows, err := s.db.Query(`SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE computer_id = $1 ORDER BY id`, computerID)
+func (s *SQLiteStore) ListSecretsByComputer(computerID int) ([]*Secret, error) {
+	rows, err := s.db.Query("SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE computer_id = ? ORDER BY id", computerID)
 	if err != nil {
 		return nil, fmt.Errorf("list secrets: %w", err)
 	}
@@ -188,9 +184,9 @@ func (s *PostgresStore) ListSecretsByComputer(computerID int) ([]*Secret, error)
 	return secrets, rows.Err()
 }
 
-func (s *PostgresStore) GetSecretByID(id int) (*Secret, error) {
+func (s *SQLiteStore) GetSecretByID(id int) (*Secret, error) {
 	var secret Secret
-	row := s.db.QueryRow(`SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE id = $1`, id)
+	row := s.db.QueryRow("SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE id = ?", id)
 	if err := row.Scan(&secret.ID, &secret.ComputerID, &secret.SecretType, &secret.Secret, &secret.DateEscrowed, &secret.RotationRequired); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
@@ -200,14 +196,10 @@ func (s *PostgresStore) GetSecretByID(id int) (*Secret, error) {
 	return s.decryptSecret(&secret)
 }
 
-func (s *PostgresStore) GetLatestSecretByComputerAndType(computerID int, secretType string) (*Secret, error) {
+func (s *SQLiteStore) GetLatestSecretByComputerAndType(computerID int, secretType string) (*Secret, error) {
 	var secret Secret
 	row := s.db.QueryRow(
-		`SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required
-		 FROM secrets
-		 WHERE computer_id = $1 AND secret_type = $2
-		 ORDER BY date_escrowed DESC
-		 LIMIT 1`,
+		"SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE computer_id = ? AND secret_type = ? ORDER BY date_escrowed DESC LIMIT 1",
 		computerID, secretType,
 	)
 	if err := row.Scan(&secret.ID, &secret.ComputerID, &secret.SecretType, &secret.Secret, &secret.DateEscrowed, &secret.RotationRequired); err != nil {
@@ -219,7 +211,8 @@ func (s *PostgresStore) GetLatestSecretByComputerAndType(computerID int, secretT
 	return s.decryptSecret(&secret)
 }
 
-func (s *PostgresStore) AddRequest(secretID int, requestingUser, reason string, approvedBy string, approved *bool) (*Request, error) {
+func (s *SQLiteStore) AddRequest(secretID int, requestingUser, reason string, approvedBy string, approved *bool) (*Request, error) {
+	now := time.Now()
 	var id int
 	var dateRequested time.Time
 	var dateApproved sql.NullTime
@@ -227,26 +220,25 @@ func (s *PostgresStore) AddRequest(secretID int, requestingUser, reason string, 
 	if approved != nil {
 		approvedValue.Valid = true
 		approvedValue.Bool = *approved
+		dateApproved.Valid = true
+		dateApproved.Time = now
 	}
 	row := s.db.QueryRow(
-		`INSERT INTO requests (secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current)
-		 VALUES ($1, $2, $3, $4, $5, $6, NOW(), CASE WHEN $3 IS NULL THEN NULL ELSE NOW() END, true)
-		 RETURNING id, date_requested, date_approved`,
-		secretID, requestingUser, approvedValue, nullableString(approvedBy), reason, sql.NullString{},
+		"INSERT INTO requests (secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, date_requested, date_approved",
+		secretID, requestingUser, approvedValue, nullableString(approvedBy), reason, sql.NullString{}, now, dateApproved, true,
 	)
 	if err := row.Scan(&id, &dateRequested, &dateApproved); err != nil {
 		return nil, fmt.Errorf("insert request: %w", err)
 	}
-
 	var approvedPtr *bool
 	if approvedValue.Valid {
-		approvedPtr = &approvedValue.Bool
+		value := approvedValue.Bool
+		approvedPtr = &value
 	}
 	var dateApprovedPtr *time.Time
 	if dateApproved.Valid {
 		dateApprovedPtr = &dateApproved.Time
 	}
-
 	return &Request{
 		ID:                id,
 		SecretID:          secretID,
@@ -261,8 +253,8 @@ func (s *PostgresStore) AddRequest(secretID int, requestingUser, reason string, 
 	}, nil
 }
 
-func (s *PostgresStore) ListRequestsBySecret(secretID int) ([]*Request, error) {
-	rows, err := s.db.Query(`SELECT id, secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current FROM requests WHERE secret_id = $1 ORDER BY id`, secretID)
+func (s *SQLiteStore) ListRequestsBySecret(secretID int) ([]*Request, error) {
+	rows, err := s.db.Query("SELECT id, secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current FROM requests WHERE secret_id = ? ORDER BY id", secretID)
 	if err != nil {
 		return nil, fmt.Errorf("list requests: %w", err)
 	}
@@ -279,8 +271,8 @@ func (s *PostgresStore) ListRequestsBySecret(secretID int) ([]*Request, error) {
 	return requests, rows.Err()
 }
 
-func (s *PostgresStore) ListOutstandingRequests() ([]*Request, error) {
-	rows, err := s.db.Query(`SELECT id, secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current FROM requests WHERE current = true AND approved IS NULL ORDER BY id`)
+func (s *SQLiteStore) ListOutstandingRequests() ([]*Request, error) {
+	rows, err := s.db.Query("SELECT id, secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current FROM requests WHERE current = true AND approved IS NULL ORDER BY id")
 	if err != nil {
 		return nil, fmt.Errorf("list outstanding requests: %w", err)
 	}
@@ -297,8 +289,8 @@ func (s *PostgresStore) ListOutstandingRequests() ([]*Request, error) {
 	return requests, rows.Err()
 }
 
-func (s *PostgresStore) GetRequestByID(id int) (*Request, error) {
-	row := s.db.QueryRow(`SELECT id, secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current FROM requests WHERE id = $1`, id)
+func (s *SQLiteStore) GetRequestByID(id int) (*Request, error) {
+	row := s.db.QueryRow("SELECT id, secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current FROM requests WHERE id = ?", id)
 	request, err := scanRequest(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -309,38 +301,39 @@ func (s *PostgresStore) GetRequestByID(id int) (*Request, error) {
 	return request, nil
 }
 
-func (s *PostgresStore) ApproveRequest(requestID int, approved bool, reason, approver string) (*Request, error) {
-	var dateApproved time.Time
-	row := s.db.QueryRow(
-		`UPDATE requests
-		 SET approved = $1, reason_for_approval = $2, auth_user = $3, date_approved = NOW()
-		 WHERE id = $4
-		 RETURNING date_approved`,
-		approved, reason, approver, requestID,
+func (s *SQLiteStore) ApproveRequest(requestID int, approved bool, reason, approver string) (*Request, error) {
+	dateApproved := time.Now()
+	result, err := s.db.Exec(
+		"UPDATE requests SET approved = ?, reason_for_approval = ?, auth_user = ?, date_approved = ? WHERE id = ?",
+		approved, reason, approver, dateApproved, requestID,
 	)
-	if err := row.Scan(&dateApproved); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, ErrNotFound
-		}
+	if err != nil {
 		return nil, fmt.Errorf("approve request: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("approve request: %w", err)
+	}
+	if affected == 0 {
+		return nil, ErrNotFound
 	}
 	updated, err := s.GetRequestByID(requestID)
 	if err != nil {
 		return nil, err
 	}
-	updated.DateApproved = &dateApproved
+	if updated.DateApproved == nil {
+		updated.DateApproved = &dateApproved
+	}
 	return updated, nil
 }
 
-func (s *PostgresStore) AddUser(username, passwordHash string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*User, error) {
+func (s *SQLiteStore) AddUser(username, passwordHash string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*User, error) {
 	var id int
-	err := s.db.QueryRow(
-		`INSERT INTO users (username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
-		 RETURNING id`,
+	row := s.db.QueryRow(
+		"INSERT INTO users (username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
 		username, nullableString(passwordHash), isStaff, canApprove, localLoginEnabled, mustResetPassword, authSource,
-	).Scan(&id)
-	if err != nil {
+	)
+	if err := row.Scan(&id); err != nil {
 		return nil, fmt.Errorf("insert user: %w", err)
 	}
 	return &User{
@@ -355,14 +348,10 @@ func (s *PostgresStore) AddUser(username, passwordHash string, isStaff, canAppro
 	}, nil
 }
 
-func (s *PostgresStore) GetUserByUsername(username string) (*User, error) {
+func (s *SQLiteStore) GetUserByUsername(username string) (*User, error) {
 	var user User
 	var passwordHash sql.NullString
-	row := s.db.QueryRow(
-		`SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source
-		 FROM users WHERE lower(username) = lower($1)`,
-		username,
-	)
+	row := s.db.QueryRow("SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source FROM users WHERE lower(username) = lower(?)", username)
 	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.LocalLoginEnabled, &user.MustResetPassword, &user.AuthSource); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
@@ -375,8 +364,8 @@ func (s *PostgresStore) GetUserByUsername(username string) (*User, error) {
 	return &user, nil
 }
 
-func (s *PostgresStore) ListUsers() ([]*User, error) {
-	rows, err := s.db.Query(`SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source FROM users ORDER BY id`)
+func (s *SQLiteStore) ListUsers() ([]*User, error) {
+	rows, err := s.db.Query("SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source FROM users ORDER BY id")
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
@@ -397,14 +386,10 @@ func (s *PostgresStore) ListUsers() ([]*User, error) {
 	return users, rows.Err()
 }
 
-func (s *PostgresStore) GetUserByID(id int) (*User, error) {
+func (s *SQLiteStore) GetUserByID(id int) (*User, error) {
 	var user User
 	var passwordHash sql.NullString
-	row := s.db.QueryRow(
-		`SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source
-		 FROM users WHERE id = $1`,
-		id,
-	)
+	row := s.db.QueryRow("SELECT id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source FROM users WHERE id = ?", id)
 	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.LocalLoginEnabled, &user.MustResetPassword, &user.AuthSource); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
@@ -417,14 +402,11 @@ func (s *PostgresStore) GetUserByID(id int) (*User, error) {
 	return &user, nil
 }
 
-func (s *PostgresStore) UpdateUser(id int, username string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*User, error) {
+func (s *SQLiteStore) UpdateUser(id int, username string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*User, error) {
 	var user User
 	var passwordHash sql.NullString
 	row := s.db.QueryRow(
-		`UPDATE users
-		 SET username = $1, is_staff = $2, can_approve = $3, local_login_enabled = $4, must_reset_password = $5, auth_source = $6
-		 WHERE id = $7
-		 RETURNING id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source`,
+		"UPDATE users SET username = ?, is_staff = ?, can_approve = ?, local_login_enabled = ?, must_reset_password = ?, auth_source = ? WHERE id = ? RETURNING id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source",
 		username, isStaff, canApprove, localLoginEnabled, mustResetPassword, authSource, id,
 	)
 	if err := row.Scan(&user.ID, &user.Username, &passwordHash, &user.IsStaff, &user.CanApprove, &user.LocalLoginEnabled, &user.MustResetPassword, &user.AuthSource); err != nil {
@@ -439,15 +421,12 @@ func (s *PostgresStore) UpdateUser(id int, username string, isStaff, canApprove,
 	return &user, nil
 }
 
-func (s *PostgresStore) UpdateUserPassword(id int, passwordHash string, mustResetPassword bool) (*User, error) {
+func (s *SQLiteStore) UpdateUserPassword(id int, passwordHash string, mustResetPassword bool) (*User, error) {
 	var user User
 	var hash sql.NullString
 	row := s.db.QueryRow(
-		`UPDATE users
-		 SET password_hash = $1, must_reset_password = $2, local_login_enabled = CASE WHEN $1 IS NULL THEN local_login_enabled ELSE true END
-		 WHERE id = $3
-		 RETURNING id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source`,
-		nullableString(passwordHash), mustResetPassword, id,
+		"UPDATE users SET password_hash = ?, must_reset_password = ?, local_login_enabled = CASE WHEN ? IS NULL THEN local_login_enabled ELSE 1 END WHERE id = ? RETURNING id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source",
+		nullableString(passwordHash), mustResetPassword, nullableString(passwordHash), id,
 	)
 	if err := row.Scan(&user.ID, &user.Username, &hash, &user.IsStaff, &user.CanApprove, &user.LocalLoginEnabled, &user.MustResetPassword, &user.AuthSource); err != nil {
 		if err == sql.ErrNoRows {
@@ -461,8 +440,8 @@ func (s *PostgresStore) UpdateUserPassword(id int, passwordHash string, mustRese
 	return &user, nil
 }
 
-func (s *PostgresStore) DeleteUser(id int) error {
-	result, err := s.db.Exec(`DELETE FROM users WHERE id = $1`, id)
+func (s *SQLiteStore) DeleteUser(id int) error {
+	result, err := s.db.Exec("DELETE FROM users WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete user: %w", err)
 	}
@@ -476,9 +455,9 @@ func (s *PostgresStore) DeleteUser(id int) error {
 	return nil
 }
 
-func (s *PostgresStore) CleanupRequests(approvedBefore time.Time) (int, error) {
+func (s *SQLiteStore) CleanupRequests(approvedBefore time.Time) (int, error) {
 	result, err := s.db.Exec(
-		`UPDATE requests SET current = false WHERE current = true AND approved IS NOT NULL AND date_approved < $1`,
+		"UPDATE requests SET current = 0 WHERE current = 1 AND approved IS NOT NULL AND date_approved < ?",
 		approvedBefore,
 	)
 	if err != nil {
@@ -491,7 +470,7 @@ func (s *PostgresStore) CleanupRequests(approvedBefore time.Time) (int, error) {
 	return int(affected), nil
 }
 
-func (s *PostgresStore) decryptSecret(secret *Secret) (*Secret, error) {
+func (s *SQLiteStore) decryptSecret(secret *Secret) (*Secret, error) {
 	if s.codec == nil {
 		return nil, ErrMissingCodec
 	}
@@ -502,53 +481,4 @@ func (s *PostgresStore) decryptSecret(secret *Secret) (*Secret, error) {
 	clone := *secret
 	clone.Secret = plaintext
 	return &clone, nil
-}
-
-type scanner interface {
-	Scan(dest ...any) error
-}
-
-func scanRequest(row scanner) (*Request, error) {
-	var request Request
-	var approved sql.NullBool
-	var authUser sql.NullString
-	var reasonApproval sql.NullString
-	var dateApproved sql.NullTime
-	if err := row.Scan(
-		&request.ID,
-		&request.SecretID,
-		&request.RequestingUser,
-		&approved,
-		&authUser,
-		&request.ReasonForRequest,
-		&reasonApproval,
-		&request.DateRequested,
-		&dateApproved,
-		&request.Current,
-	); err != nil {
-		return nil, err
-	}
-
-	if approved.Valid {
-		value := approved.Bool
-		request.Approved = &value
-	}
-	if authUser.Valid {
-		request.AuthUser = authUser.String
-	}
-	if reasonApproval.Valid {
-		request.ReasonForApproval = reasonApproval.String
-	}
-	if dateApproved.Valid {
-		request.DateApproved = &dateApproved.Time
-	}
-
-	return &request, nil
-}
-
-func nullableString(value string) sql.NullString {
-	if strings.TrimSpace(value) == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: value, Valid: true}
 }

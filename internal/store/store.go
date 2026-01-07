@@ -35,4 +35,5 @@ type Store interface {
 	UpdateUser(id int, username string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*User, error)
 	UpdateUserPassword(id int, passwordHash string, mustResetPassword bool) (*User, error)
 	DeleteUser(id int) error
+	CleanupRequests(approvedBefore time.Time) (int, error)
 }

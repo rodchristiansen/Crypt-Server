@@ -3,7 +3,9 @@ package main
 import (
 	"crypt-server/internal/app"
 	"crypt-server/internal/crypto"
+	"crypt-server/internal/migrate"
 	"crypt-server/internal/store"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -14,25 +16,61 @@ import (
 )
 
 func main() {
+	printMigrations := flag.Bool("print-migrations", false, "Print embedded migrations and exit")
+	validateMigrations := flag.Bool("validate-migrations", false, "Validate embedded migrations and exit")
+	migrationsDriver := flag.String("migrations-driver", "", "Migrations driver to target (postgres or sqlite)")
+	flag.Parse()
+
 	logger := log.New(os.Stdout, "crypt-server ", log.LstdFlags)
+	if *printMigrations || *validateMigrations {
+		if err := runMigrationCommand(os.Stdout, migrate.EmbeddedFS, *migrationsDriver, *validateMigrations, *printMigrations); err != nil {
+			logger.Fatalf("migration command failed: %v", err)
+		}
+		return
+	}
+
 	encryptionKey := os.Getenv("FIELD_ENCRYPTION_KEY")
 	codec, err := crypto.NewAesGcmCodecFromBase64Key(encryptionKey)
 	if err != nil {
 		logger.Fatalf("invalid encryption key: %v", err)
 	}
 
+	dbConfig, err := loadDatabaseConfig()
+	if err != nil {
+		logger.Fatal(err)
+	}
 	var dataStore store.Store
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL != "" {
-		postgresStore, err := store.NewPostgresStore(dbURL, codec)
+	switch dbConfig.driver {
+	case "postgres":
+		postgresStore, err := store.NewPostgresStore(dbConfig.dsn, codec)
 		if err != nil {
 			logger.Fatalf("database connection failed: %v", err)
 		}
+		pgFS, err := migrate.SubMigrationsFS(migrate.EmbeddedFS, "postgres")
+		if err != nil {
+			logger.Fatalf("database migration failed: %v", err)
+		}
+		if err := migrate.Apply(postgresStore.DB(), "postgres", pgFS); err != nil {
+			logger.Fatalf("database migration failed: %v", err)
+		}
 		dataStore = postgresStore
 		logger.Printf("using postgres store")
-	} else {
-		dataStore = store.NewMemoryStore(codec)
-		logger.Printf("using in-memory store")
+	case "sqlite":
+		sqliteStore, err := store.NewSQLiteStore(dbConfig.dsn, codec)
+		if err != nil {
+			logger.Fatalf("database connection failed: %v", err)
+		}
+		sqliteFS, err := migrate.SubMigrationsFS(migrate.EmbeddedFS, "sqlite")
+		if err != nil {
+			logger.Fatalf("database migration failed: %v", err)
+		}
+		if err := migrate.Apply(sqliteStore.DB(), "sqlite", sqliteFS); err != nil {
+			logger.Fatalf("database migration failed: %v", err)
+		}
+		dataStore = sqliteStore
+		logger.Printf("using sqlite store")
+	default:
+		logger.Fatalf("unsupported database driver: %s", dbConfig.driver)
 	}
 	renderer := app.NewRenderer("web/templates/layouts/base.html", "web/templates/pages")
 	sessionKey := os.Getenv("SESSION_KEY")
@@ -45,10 +83,11 @@ func main() {
 		logger.Fatalf("invalid session configuration: %v", err)
 	}
 	settings := app.Settings{
-		ApproveOwn:   envBool("APPROVE_OWN", true),
-		AllApprove:   envBool("ALL_APPROVE", false),
-		SessionTTL:   sessionTTL,
-		CookieSecure: envBool("SESSION_COOKIE_SECURE", false),
+		ApproveOwn:             envBool("APPROVE_OWN", true),
+		AllApprove:             envBool("ALL_APPROVE", false),
+		SessionTTL:             sessionTTL,
+		CookieSecure:           envBool("SESSION_COOKIE_SECURE", false),
+		RequestCleanupInterval: time.Hour,
 	}
 	csrfManager := app.NewCSRFManager("crypt_csrf", 32)
 

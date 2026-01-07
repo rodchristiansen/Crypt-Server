@@ -31,10 +31,11 @@ func newTestServer(t *testing.T) (*Server, *store.MemoryStore, *SessionManager) 
 	sessionManager, err := NewSessionManager([]byte("test-session-key-32-bytes-long!!"), "crypt_session", time.Hour)
 	require.NoError(t, err)
 	settings := Settings{
-		ApproveOwn:   true,
-		AllApprove:   false,
-		SessionTTL:   time.Hour,
-		CookieSecure: false,
+		ApproveOwn:             true,
+		AllApprove:             false,
+		SessionTTL:             time.Hour,
+		CookieSecure:           false,
+		RequestCleanupInterval: 0,
 	}
 	csrfManager := NewCSRFManager("crypt_csrf", 32)
 	server := NewServer(memStore, renderer, logger, sessionManager, csrfManager, nil, nil, settings)

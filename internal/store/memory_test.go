@@ -112,6 +112,27 @@ func TestMemoryStoreUpdateAndDeleteUser(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestMemoryStoreCleanupRequests(t *testing.T) {
+	store := NewMemoryStore(testCodec(t))
+	computer, err := store.AddComputer("SERIAL9", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := store.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	approved := true
+	request, err := store.AddRequest(secret.ID, "user", "reason", "approver", &approved)
+	require.NoError(t, err)
+
+	store.mu.Lock()
+	old := time.Now().Add(-8 * 24 * time.Hour)
+	request.DateApproved = &old
+	store.mu.Unlock()
+
+	count, err := store.CleanupRequests(time.Now().Add(-7 * 24 * time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+	require.False(t, request.Current)
+}
+
 func TestMemoryStoreUpsertComputer(t *testing.T) {
 	store := NewMemoryStore(testCodec(t))
 	now := time.Now()
