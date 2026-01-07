@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"crypt-server/internal/crypto"
@@ -18,9 +20,15 @@ func parseFixture(data []byte) ([]fixtureEntry, error) {
 	return entries, nil
 }
 
-func convertFixture(entries []fixtureEntry, legacyKey *fernet.Key, newCodec *crypto.AesGcmCodec) (*migrationOutput, error) {
+func convertFixture(entries []fixtureEntry, legacyKey *fernet.Key, newCodec *crypto.AesGcmCodec, passwordMap map[string]passwordMapEntry) (*migrationOutput, error) {
 	users := make(map[int]userOut)
 	usernames := make(map[int]string)
+	emails := make(map[int]string)
+	groups := make(map[int]string)
+	permissionIDs := make(map[int]struct{})
+	userPermissions := make(map[int][]int)
+	groupPermissions := make(map[int][]int)
+	userGroups := make(map[int][]int)
 	computers := make([]computerOut, 0)
 	secrets := make([]secretOut, 0)
 	requests := make([]requestOut, 0)
@@ -35,9 +43,29 @@ func convertFixture(entries []fixtureEntry, legacyKey *fernet.Key, newCodec *cry
 				Email:    getString(entry.Fields, "email"),
 				IsStaff:  getBool(entry.Fields, "is_staff"),
 				IsSuper:  getBool(entry.Fields, "is_superuser"),
+				Groups:   []string{},
 			}
 			users[entry.PK] = user
 			usernames[entry.PK] = username
+			emails[entry.PK] = strings.ToLower(getString(entry.Fields, "email"))
+		case "auth.group":
+			groups[entry.PK] = getString(entry.Fields, "name")
+		case "auth.permission":
+			if getString(entry.Fields, "codename") == "can_approve" {
+				permissionIDs[entry.PK] = struct{}{}
+			}
+		case "auth.user_user_permissions":
+			userID := getInt(entry.Fields, "user")
+			permID := getInt(entry.Fields, "permission")
+			userPermissions[userID] = append(userPermissions[userID], permID)
+		case "auth.group_permissions":
+			groupID := getInt(entry.Fields, "group")
+			permID := getInt(entry.Fields, "permission")
+			groupPermissions[groupID] = append(groupPermissions[groupID], permID)
+		case "auth.user_groups":
+			userID := getInt(entry.Fields, "user")
+			groupID := getInt(entry.Fields, "group")
+			userGroups[userID] = append(userGroups[userID], groupID)
 		}
 	}
 
@@ -88,9 +116,16 @@ func convertFixture(entries []fixtureEntry, legacyKey *fernet.Key, newCodec *cry
 	}
 
 	userList := make([]userOut, 0, len(users))
-	for _, user := range users {
+	for id, user := range users {
+		groupNames := mapGroups(userGroups[id], groups)
+		user.Groups = groupNames
+		user.CanApprove = resolveCanApprove(user, userPermissions[id], groupPermissions, userGroups[id], permissionIDs)
+		applyPasswordMapping(&user, passwordMap, emails[id])
 		userList = append(userList, user)
 	}
+	sort.Slice(userList, func(i, j int) bool {
+		return userList[i].ID < userList[j].ID
+	})
 
 	return &migrationOutput{
 		Computers: computers,
@@ -98,6 +133,66 @@ func convertFixture(entries []fixtureEntry, legacyKey *fernet.Key, newCodec *cry
 		Requests:  requests,
 		Users:     userList,
 	}, nil
+}
+
+func mapGroups(groupIDs []int, groups map[int]string) []string {
+	unique := map[string]struct{}{}
+	for _, groupID := range groupIDs {
+		if name := groups[groupID]; name != "" {
+			unique[name] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(unique))
+	for name := range unique {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func resolveCanApprove(user userOut, userPerms []int, groupPerms map[int][]int, userGroupIDs []int, canApproveIDs map[int]struct{}) bool {
+	if user.IsSuper {
+		return true
+	}
+	if hasPermission(userPerms, canApproveIDs) {
+		return true
+	}
+	for _, groupID := range userGroupIDs {
+		if hasPermission(groupPerms[groupID], canApproveIDs) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPermission(permissionIDs []int, allowed map[int]struct{}) bool {
+	for _, permID := range permissionIDs {
+		if _, ok := allowed[permID]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func applyPasswordMapping(user *userOut, passwordMap map[string]passwordMapEntry, email string) {
+	user.MustResetPassword = true
+	user.LocalLoginEnabled = false
+	user.AuthSource = "saml"
+	if entry, ok := passwordMap[strings.ToLower(user.Username)]; ok {
+		user.PasswordHash = entry.PasswordHash
+		user.MustResetPassword = entry.MustResetPassword
+		user.LocalLoginEnabled = true
+		user.AuthSource = "local"
+		return
+	}
+	if email != "" {
+		if entry, ok := passwordMap[email]; ok {
+			user.PasswordHash = entry.PasswordHash
+			user.MustResetPassword = entry.MustResetPassword
+			user.LocalLoginEnabled = true
+			user.AuthSource = "local"
+		}
+	}
 }
 
 func decryptLegacySecret(value string, key *fernet.Key) (string, error) {

@@ -1,6 +1,9 @@
 package store
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 var ErrNotFound = errors.New("not found")
 var ErrMissingCodec = errors.New("secret codec is required")
@@ -12,12 +15,14 @@ type SecretCodec interface {
 
 type Store interface {
 	AddComputer(serial, username, computerName string) (*Computer, error)
+	UpsertComputer(serial, username, computerName string, lastCheckin time.Time) (*Computer, error)
 	ListComputers() ([]*Computer, error)
 	GetComputerByID(id int) (*Computer, error)
 	GetComputerBySerial(serial string) (*Computer, error)
 	AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*Secret, error)
 	ListSecretsByComputer(computerID int) ([]*Secret, error)
 	GetSecretByID(id int) (*Secret, error)
+	GetLatestSecretByComputerAndType(computerID int, secretType string) (*Secret, error)
 	AddRequest(secretID int, requestingUser, reason string, approvedBy string, approved *bool) (*Request, error)
 	ListRequestsBySecret(secretID int) ([]*Request, error)
 	ListOutstandingRequests() ([]*Request, error)

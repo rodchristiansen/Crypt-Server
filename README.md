@@ -29,7 +29,15 @@ go run ./cmd/cryptctl import-fixture \
   --input legacy.json \
   --output migration-export.json \
   --legacy-key-file legacy-field-encryption-key.txt \
-  --new-key-file new-field-encryption-key.txt
+  --new-key-file new-field-encryption-key.txt \
+  --password-map password-map.csv
+```
+
+Optional password map CSV format:
+
+```
+username_or_email,password,must_reset_password
+admin@example.com,Str0ng!Passw0rd,false
 ```
 
 ## Installation instructions

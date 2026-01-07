@@ -2,6 +2,7 @@ package store
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -109,4 +110,36 @@ func TestMemoryStoreUpdateAndDeleteUser(t *testing.T) {
 	require.NoError(t, err)
 	_, err = store.GetUserByID(user.ID)
 	require.Error(t, err)
+}
+
+func TestMemoryStoreUpsertComputer(t *testing.T) {
+	store := NewMemoryStore(testCodec(t))
+	now := time.Now()
+	computer, err := store.UpsertComputer("SERIAL", "user", "Mac", now)
+	require.NoError(t, err)
+	require.Equal(t, "SERIAL", computer.Serial)
+
+	updated, err := store.UpsertComputer("SERIAL", "user2", "Mac2", now.Add(time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, computer.ID, updated.ID)
+	require.Equal(t, "user2", updated.Username)
+	require.Equal(t, "Mac2", updated.ComputerName)
+}
+
+func TestMemoryStoreLatestSecretByType(t *testing.T) {
+	store := NewMemoryStore(testCodec(t))
+	computer, err := store.AddComputer("SERIAL7", "user", "Mac")
+	require.NoError(t, err)
+
+	first, err := store.AddSecret(computer.ID, "recovery_key", "secret1", false)
+	require.NoError(t, err)
+
+	time.Sleep(10 * time.Millisecond)
+	second, err := store.AddSecret(computer.ID, "recovery_key", "secret2", true)
+	require.NoError(t, err)
+
+	latest, err := store.GetLatestSecretByComputerAndType(computer.ID, "recovery_key")
+	require.NoError(t, err)
+	require.Equal(t, second.ID, latest.ID)
+	require.NotEqual(t, first.ID, latest.ID)
 }

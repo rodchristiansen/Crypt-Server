@@ -24,7 +24,7 @@ func TestConvertFixtureBadSecret(t *testing.T) {
 		{Model: "server.secret", PK: 20, Fields: map[string]interface{}{"computer": 10, "secret_type": "recovery_key", "secret": "not-a-token"}},
 	}
 
-	_, err = convertFixture(entries, legacyDecoded[0], codec)
+	_, err = convertFixture(entries, legacyDecoded[0], codec, map[string]passwordMapEntry{})
 	require.Error(t, err)
 }
 
@@ -40,7 +40,7 @@ func TestConvertFixtureMissingSecret(t *testing.T) {
 		{Model: "server.secret", PK: 21, Fields: map[string]interface{}{"computer": 10, "secret_type": "recovery_key"}},
 	}
 
-	_, err = convertFixture(entries, legacyDecoded[0], codec)
+	_, err = convertFixture(entries, legacyDecoded[0], codec, map[string]passwordMapEntry{})
 	require.Error(t, err)
 }
 

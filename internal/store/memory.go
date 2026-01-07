@@ -52,6 +52,30 @@ func (s *MemoryStore) AddComputer(serial, username, computerName string) (*Compu
 	return computer, nil
 }
 
+func (s *MemoryStore) UpsertComputer(serial, username, computerName string, lastCheckin time.Time) (*Computer, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, computer := range s.computers {
+		if strings.EqualFold(computer.Serial, serial) {
+			computer.Username = username
+			computer.ComputerName = computerName
+			computer.LastCheckin = lastCheckin
+			return computer, nil
+		}
+	}
+	computer := &Computer{
+		ID:           s.nextComputerID,
+		Serial:       serial,
+		Username:     username,
+		ComputerName: computerName,
+		LastCheckin:  lastCheckin,
+	}
+	s.nextComputerID++
+	s.computers[computer.ID] = computer
+	return computer, nil
+}
+
 func (s *MemoryStore) ListComputers() ([]*Computer, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -148,6 +172,25 @@ func (s *MemoryStore) GetSecretByID(id int) (*Secret, error) {
 		return nil, ErrNotFound
 	}
 	return s.decryptSecret(secret)
+}
+
+func (s *MemoryStore) GetLatestSecretByComputerAndType(computerID int, secretType string) (*Secret, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var latest *Secret
+	for _, secret := range s.secrets {
+		if secret.ComputerID != computerID || secret.SecretType != secretType {
+			continue
+		}
+		if latest == nil || secret.DateEscrowed.After(latest.DateEscrowed) {
+			latest = secret
+		}
+	}
+	if latest == nil {
+		return nil, ErrNotFound
+	}
+	return s.decryptSecret(latest)
 }
 
 func (s *MemoryStore) AddRequest(secretID int, requestingUser, reason string, approvedBy string, approved *bool) (*Request, error) {

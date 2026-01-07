@@ -58,11 +58,17 @@ type requestOut struct {
 }
 
 type userOut struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	IsStaff  bool   `json:"is_staff"`
-	IsSuper  bool   `json:"is_superuser"`
+	ID                int      `json:"id"`
+	Username          string   `json:"username"`
+	Email             string   `json:"email"`
+	IsStaff           bool     `json:"is_staff"`
+	IsSuper           bool     `json:"is_superuser"`
+	CanApprove        bool     `json:"can_approve"`
+	Groups            []string `json:"groups"`
+	PasswordHash      string   `json:"password_hash"`
+	MustResetPassword bool     `json:"must_reset_password"`
+	LocalLoginEnabled bool     `json:"local_login_enabled"`
+	AuthSource        string   `json:"auth_source"`
 }
 
 func main() {
@@ -116,6 +122,7 @@ func runImportFixture(args []string) error {
 	legacyKeyFile := fs.String("legacy-key-file", "", "Path to file containing legacy FIELD_ENCRYPTION_KEY")
 	newKey := fs.String("new-key", "", "Base64 new FIELD_ENCRYPTION_KEY")
 	newKeyFile := fs.String("new-key-file", "", "Path to file containing new FIELD_ENCRYPTION_KEY")
+	passwordMapPath := fs.String("password-map", "", "Path to CSV file mapping usernames/emails to passwords")
 	fs.Parse(args)
 
 	if *inputPath == "" || *outputPath == "" {
@@ -150,7 +157,12 @@ func runImportFixture(args []string) error {
 		return fmt.Errorf("parse fixture: %w", err)
 	}
 
-	output, err := convertFixture(entries, legacyFernetKey, newCodec)
+	passwordMap, err := loadPasswordMap(*passwordMapPath)
+	if err != nil {
+		return fmt.Errorf("load password map: %w", err)
+	}
+
+	output, err := convertFixture(entries, legacyFernetKey, newCodec, passwordMap)
 	if err != nil {
 		return fmt.Errorf("convert fixture: %w", err)
 	}

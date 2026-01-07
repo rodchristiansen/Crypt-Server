@@ -164,18 +164,65 @@ func TestLookupComputer(t *testing.T) {
 	require.Equal(t, computer.ID, bySerial.ID)
 }
 
-func TestCheckinVerifyStubs(t *testing.T) {
-	server, _, _ := newTestServer(t)
+func TestCheckinCreatesSecret(t *testing.T) {
+	server, memStore, _ := newTestServer(t)
+
+	form := url.Values{}
+	form.Set("serial", "SERIALCHECKIN")
+	form.Set("recovery_password", "secret-value")
+	form.Set("username", "user1")
+	form.Set("macname", "MacBook")
+	form.Set("secret_type", "recovery_key")
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/checkin/", nil)
+	req := httptest.NewRequest(http.MethodPost, "/checkin/", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	server.handleCheckin(rec, req)
-	require.Equal(t, http.StatusNotImplemented, rec.Code)
 
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/verify/serial/type/", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "\"serial\":\"SERIALCHECKIN\"")
+	require.Contains(t, rec.Body.String(), "\"rotation_required\":false")
+
+	computer, err := memStore.GetComputerBySerial("SERIALCHECKIN")
+	require.NoError(t, err)
+	require.Equal(t, "user1", computer.Username)
+}
+
+func TestVerifyEscrowed(t *testing.T) {
+	server, memStore, _ := newTestServer(t)
+	computer, err := memStore.AddComputer("SERIALVERIFY", "user", "Mac")
+	require.NoError(t, err)
+	_, err = memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/verify/SERIALVERIFY/recovery_key/", nil)
 	server.handleVerify(rec, req)
-	require.Equal(t, http.StatusNotImplemented, rec.Code)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "\"escrowed\":true")
+	require.Contains(t, rec.Body.String(), "\"date_escrowed\"")
+}
+
+func TestVerifyNotEscrowed(t *testing.T) {
+	server, memStore, _ := newTestServer(t)
+	_, err := memStore.AddComputer("SERIALVERIFY2", "user", "Mac")
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/verify/SERIALVERIFY2/recovery_key/", nil)
+	server.handleVerify(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "\"escrowed\":false")
+}
+
+func TestVerifyMissingComputer(t *testing.T) {
+	server, _, _ := newTestServer(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/verify/UNKNOWN/recovery_key/", nil)
+	server.handleVerify(rec, req)
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestHandleLoginSuccess(t *testing.T) {

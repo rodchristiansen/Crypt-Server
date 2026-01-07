@@ -26,6 +26,23 @@ func TestPostgresStoreAddComputer(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestPostgresStoreUpsertComputer(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	store := NewPostgresStoreWithDB(db, testCodec(t))
+	lastCheckin := time.Now()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES ($1, $2, $3, $4) ON CONFLICT (serial) DO UPDATE SET username = EXCLUDED.username, computername = EXCLUDED.computername, last_checkin = EXCLUDED.last_checkin RETURNING id, last_checkin",
+	)).WithArgs("SERIAL", "user", "Mac", lastCheckin).WillReturnRows(sqlmock.NewRows([]string{"id", "last_checkin"}).AddRow(1, lastCheckin))
+
+	computer, err := store.UpsertComputer("SERIAL", "user", "Mac", lastCheckin)
+	require.NoError(t, err)
+	require.Equal(t, 1, computer.ID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestPostgresStoreListComputers(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -125,6 +142,15 @@ func TestPostgresStoreGetSecretAndRequests(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "password", secret.SecretType)
 	require.Equal(t, "secret", secret.Secret)
+
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE computer_id = $1 AND secret_type = $2 ORDER BY date_escrowed DESC LIMIT 1",
+	)).WithArgs(1, "password").WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}).AddRow(3, 1, "password", encryptedSecret, now, true))
+
+	latest, err := store.GetLatestSecretByComputerAndType(1, "password")
+	require.NoError(t, err)
+	require.Equal(t, 3, latest.ID)
+	require.True(t, latest.RotationRequired)
 
 	encryptedSecret2, err := codec.Encrypt("secret")
 	require.NoError(t, err)

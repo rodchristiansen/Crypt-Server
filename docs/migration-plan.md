@@ -114,6 +114,9 @@ Source: `server/templates/server/*.html`, `templates/*.html`, `site_static/*`
   - Spot-check decrypt -> re-encrypt correctness.
   - Validate `/verify/` and `/checkin/` behavior on migrated data.
 
+
+  Previous requqests and approvals should also be migrated.
+
 ### 4) Frontend Plan (Tech TBD)
 - Option A: **Server-rendered HTML** with Go templates, reusing existing HTML structure and CSS/JS assets for perfect parity.
 

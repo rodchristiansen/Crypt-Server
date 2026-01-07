@@ -55,6 +55,29 @@ func (s *PostgresStore) AddComputer(serial, username, computerName string) (*Com
 	}, nil
 }
 
+func (s *PostgresStore) UpsertComputer(serial, username, computerName string, lastCheckin time.Time) (*Computer, error) {
+	var id int
+	var stored time.Time
+	err := s.db.QueryRow(
+		`INSERT INTO computers (serial, username, computername, last_checkin)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (serial)
+		 DO UPDATE SET username = EXCLUDED.username, computername = EXCLUDED.computername, last_checkin = EXCLUDED.last_checkin
+		 RETURNING id, last_checkin`,
+		serial, username, computerName, lastCheckin,
+	).Scan(&id, &stored)
+	if err != nil {
+		return nil, fmt.Errorf("upsert computer: %w", err)
+	}
+	return &Computer{
+		ID:           id,
+		Serial:       serial,
+		Username:     username,
+		ComputerName: computerName,
+		LastCheckin:  stored,
+	}, nil
+}
+
 func (s *PostgresStore) ListComputers() ([]*Computer, error) {
 	rows, err := s.db.Query(`SELECT id, serial, username, computername, last_checkin FROM computers ORDER BY id`)
 	if err != nil {
@@ -169,6 +192,25 @@ func (s *PostgresStore) GetSecretByID(id int) (*Secret, error) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get secret: %w", err)
+	}
+	return s.decryptSecret(&secret)
+}
+
+func (s *PostgresStore) GetLatestSecretByComputerAndType(computerID int, secretType string) (*Secret, error) {
+	var secret Secret
+	row := s.db.QueryRow(
+		`SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required
+		 FROM secrets
+		 WHERE computer_id = $1 AND secret_type = $2
+		 ORDER BY date_escrowed DESC
+		 LIMIT 1`,
+		computerID, secretType,
+	)
+	if err := row.Scan(&secret.ID, &secret.ComputerID, &secret.SecretType, &secret.Secret, &secret.DateEscrowed, &secret.RotationRequired); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("get latest secret: %w", err)
 	}
 	return s.decryptSecret(&secret)
 }

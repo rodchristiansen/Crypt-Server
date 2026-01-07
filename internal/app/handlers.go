@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -944,13 +945,109 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCheckin(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte("checkin endpoint pending"))
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	serial := r.FormValue("serial")
+	if serial == "" {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	recoveryPass := r.FormValue("recovery_password")
+	if recoveryPass == "" {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	userName := r.FormValue("username")
+	if userName == "" {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	macName := r.FormValue("macname")
+	if macName == "" {
+		macName = serial
+	}
+	secretType := r.FormValue("secret_type")
+	if secretType == "" {
+		secretType = "recovery_key"
+	}
+	secretType = strings.TrimSpace(secretType)
+	if secretType == "" {
+		secretType = "recovery_key"
+	}
+
+	now := time.Now()
+	computer, err := s.store.UpsertComputer(serial, userName, macName, now)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	_, err = s.store.AddSecret(computer.ID, secretType, recoveryPass, false)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	latest, err := s.store.GetLatestSecretByComputerAndType(computer.ID, secretType)
+	if err != nil && err != store.ErrNotFound {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	rotationRequired := false
+	if latest != nil {
+		rotationRequired = latest.RotationRequired
+	}
+
+	payload := map[string]any{
+		"serial":            computer.Serial,
+		"username":          computer.Username,
+		"rotation_required": rotationRequired,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-	w.Write([]byte("verify endpoint pending"))
+	path := strings.TrimPrefix(r.URL.Path, "/verify/")
+	path = strings.TrimSuffix(path, "/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 {
+		http.NotFound(w, r)
+		return
+	}
+	serial := parts[0]
+	secretType := parts[1]
+	if serial == "" || secretType == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	computer, err := s.store.GetComputerBySerial(serial)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	secret, err := s.store.GetLatestSecretByComputerAndType(computer.ID, secretType)
+	payload := map[string]any{}
+	if err == nil {
+		payload["escrowed"] = true
+		payload["date_escrowed"] = secret.DateEscrowed.Format(time.RFC3339)
+	} else if err == store.ErrNotFound {
+		payload["escrowed"] = false
+	} else {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (s *Server) currentUser(r *http.Request) User {
