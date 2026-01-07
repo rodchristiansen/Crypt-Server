@@ -15,18 +15,19 @@ import (
 	"time"
 
 	"crypt-server/internal/crypto"
+	"crypt-server/internal/migrate"
 	"crypt-server/internal/store"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestServer(t *testing.T) (*Server, *store.MemoryStore, *SessionManager) {
+func newTestServer(t *testing.T) (*Server, store.Store, *SessionManager) {
 	t.Helper()
 	root := filepath.Join("..", "..")
 	layout := filepath.Join(root, "web", "templates", "layouts", "base.html")
 	pages := filepath.Join(root, "web", "templates", "pages")
 	renderer := NewRenderer(layout, pages)
 	codec := testCodec(t)
-	memStore := store.NewMemoryStore(codec)
+	dataStore := newTestSQLiteStore(t, codec)
 	logger := log.New(io.Discard, "", 0)
 	sessionManager, err := NewSessionManager([]byte("test-session-key-32-bytes-long!!"), "crypt_session", time.Hour)
 	require.NoError(t, err)
@@ -38,11 +39,22 @@ func newTestServer(t *testing.T) (*Server, *store.MemoryStore, *SessionManager) 
 		RequestCleanupInterval: 0,
 	}
 	csrfManager := NewCSRFManager("crypt_csrf", 32)
-	server := NewServer(memStore, renderer, logger, sessionManager, csrfManager, nil, nil, settings)
+	server := NewServer(dataStore, renderer, logger, sessionManager, csrfManager, nil, nil, settings)
 	passwordHash := hashPasswordForTest(t, "password")
-	_, err = memStore.AddUser("admin", passwordHash, true, true, true, false, "local")
+	_, err = dataStore.AddUser("admin", passwordHash, true, true, true, false, "local")
 	require.NoError(t, err)
-	return server, memStore, sessionManager
+	return server, dataStore, sessionManager
+}
+
+func newTestSQLiteStore(t *testing.T, codec *crypto.AesGcmCodec) *store.SQLiteStore {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "crypt.db")
+	sqliteStore, err := store.NewSQLiteStore(path, codec)
+	require.NoError(t, err)
+	migrationFS, err := migrate.SubMigrationsFS(migrate.EmbeddedFS, "sqlite")
+	require.NoError(t, err)
+	require.NoError(t, migrate.Apply(sqliteStore.DB(), "sqlite", migrationFS))
+	return sqliteStore
 }
 
 func TestHandleIndex(t *testing.T) {

@@ -135,7 +135,6 @@ Source: `server/templates/server/*.html`, `templates/*.html`, `site_static/*`
 - Target database for Go (Postgres vs other)?
     - postgres
     - sqlite
-    - no in memory
 - Email delivery provider requirements?
     - scrap email completely
 - Any changes desired in request cleanup timing or rotation semantics?

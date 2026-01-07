@@ -32,7 +32,7 @@ func TestLoadMigrationsOrdersByVersion(t *testing.T) {
 
 func TestSubMigrationsFS(t *testing.T) {
 	fs := fstest.MapFS{
-		"internal/migrate/migrations/postgres/001_init.sql": {Data: []byte("CREATE TABLE a (id INTEGER);")},
+		"migrations/postgres/001_init.sql": {Data: []byte("CREATE TABLE a (id INTEGER);")},
 	}
 	sub, err := SubMigrationsFS(fs, "postgres")
 	require.NoError(t, err)

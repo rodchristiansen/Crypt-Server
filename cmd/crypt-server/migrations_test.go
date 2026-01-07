@@ -27,8 +27,8 @@ func TestMigrationDrivers(t *testing.T) {
 
 func TestRunMigrationCommandPrints(t *testing.T) {
 	fsys := fstest.MapFS{
-		"internal/migrate/migrations/postgres/001_init.sql": {Data: []byte("CREATE TABLE a (id INTEGER);")},
-		"internal/migrate/migrations/sqlite/001_init.sql":   {Data: []byte("CREATE TABLE a (id INTEGER);")},
+		"migrations/postgres/001_init.sql": {Data: []byte("CREATE TABLE a (id INTEGER);")},
+		"migrations/sqlite/001_init.sql":   {Data: []byte("CREATE TABLE a (id INTEGER);")},
 	}
 	var buf bytes.Buffer
 
@@ -40,7 +40,7 @@ func TestRunMigrationCommandPrints(t *testing.T) {
 
 func TestRunMigrationCommandValidates(t *testing.T) {
 	fsys := fstest.MapFS{
-		"internal/migrate/migrations/sqlite/001_init.sql": {Data: []byte("CREATE TABLE a (id INTEGER);")},
+		"migrations/sqlite/001_init.sql": {Data: []byte("CREATE TABLE a (id INTEGER);")},
 	}
 
 	var buf bytes.Buffer

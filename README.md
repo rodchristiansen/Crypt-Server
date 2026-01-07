@@ -58,7 +58,7 @@ All settings that would be entered into `settings.py` can also be passed into th
 
 - `DATABASE_URL` - Postgres connection string. Mutually exclusive with `SQLITE_PATH`.
 
-- `SQLITE_PATH` - SQLite database file path. Must be a file (no in-memory databases). Mutually exclusive with `DATABASE_URL`.
+- `SQLITE_PATH` - SQLite database file path. Must be a file path. Mutually exclusive with `DATABASE_URL`.
 
 - `SESSION_COOKIE_SECURE` - Set to `true` to mark session cookies as secure (recommended when using HTTPS).
 

@@ -226,5 +226,5 @@ func splitStatements(sqlText string) []string {
 }
 
 func SubMigrationsFS(fsys fs.FS, driver string) (fs.FS, error) {
-	return fs.Sub(fsys, filepath.Join("internal", "migrate", "migrations", driver))
+	return fs.Sub(fsys, filepath.Join("migrations", driver))
 }
