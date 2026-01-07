@@ -9,6 +9,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/crewjam/saml/samlsp"
 )
 
 func main() {
@@ -49,7 +51,25 @@ func main() {
 		CookieSecure: envBool("SESSION_COOKIE_SECURE", false),
 	}
 	csrfManager := app.NewCSRFManager("crypt_csrf", 32)
-	server := app.NewServer(dataStore, renderer, logger, sessionManager, csrfManager, settings)
+
+	var samlSP *samlsp.Middleware
+	var samlConfig *app.SAMLConfig
+	samlConfigPath := os.Getenv("SAML_CONFIG_FILE")
+	if samlConfigPath != "" {
+		cfg, err := app.LoadSAMLConfig(samlConfigPath)
+		if err != nil {
+			logger.Fatalf("invalid saml config: %v", err)
+		}
+		samlProvider, err := app.BuildSAMLProvider(cfg)
+		if err != nil {
+			logger.Fatalf("saml setup failed: %v", err)
+		}
+		samlSP = samlProvider
+		samlConfig = cfg
+		logger.Printf("saml enabled")
+	}
+
+	server := app.NewServer(dataStore, renderer, logger, sessionManager, csrfManager, samlSP, samlConfig, settings)
 
 	addr := ":8080"
 	logger.Printf("listening on %s", addr)

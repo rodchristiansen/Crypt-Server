@@ -1,0 +1,26 @@
+root_url: https://crypt.example.com
+entity_id: https://crypt.example.com/saml2/metadata/
+idp_metadata_path: /path/to/idp/metadata.xml
+certificate_path: /path/to/sp.crt
+private_key_path: /path/to/sp.key
+allow_idp_initiated: true
+sign_request: false
+use_name_id_as_username: true
+create_unknown_user: true
+username_attribute: uid
+attribute_mapping:
+  uid: username
+  mail: email
+  cn: first_name
+  sn: last_name
+groups_attribute: memberOf
+staff_groups: []
+superuser_groups: []
+can_approve_groups: []
+auth_source: saml
+local_login_enabled: false
+must_reset_password: false
+default_redirect_uri: /
+metadata_url_path: /saml2/metadata/
+acs_url_path: /saml2/acs/
+slo_url_path: /saml2/ls/

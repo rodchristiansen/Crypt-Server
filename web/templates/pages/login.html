@@ -6,8 +6,10 @@
     <p><input class='btn' type="button" value="Logout" onClick="document.location.href='/logout/';" /></p>
 {{else}}
     <h2>Please log in.</h2>
-    <p><a class="btn btn-primary" href="/saml/login/">Sign in with SAML</a></p>
-    <hr />
+    {{if .SAMLAvailable}}
+      <p><a class="btn btn-primary" href="{{.SAMLLoginURL}}">Sign in with SAML</a></p>
+      <hr />
+    {{end}}
     <h3>Local login</h3>
     {{if .ErrorMessage}}
         <div class="alert alert-danger">{{.ErrorMessage}}</div>

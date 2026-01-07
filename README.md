@@ -50,6 +50,8 @@ All settings that would be entered into `settings.py` can also be passed into th
 
 - `SESSION_COOKIE_SECURE` - Set to `true` to mark session cookies as secure (recommended when using HTTPS).
 
+- `SAML_CONFIG_FILE` - Path to a YAML file containing SAML configuration. See `docs/saml-config.sample.yaml` for all supported fields.
+
 - `SEND_EMAIL` - Crypt Server can send email notifcations when secrets are requested and approved. Set `SEND_EMAIL` to True, and set `HOST_NAME` to your server's host and URL scheme (e.g. `https://crypt.example.com`). For configuring your email settings, see the [Django documentation](https://docs.djangoproject.com/en/3.1/ref/settings/#std:setting-EMAIL_HOST).
 
 - `EMAIL_SENDER` - The email address to send emaiil notifications from when secrets are requests and approved. Ensure this is verified if you are using SES. Does nothing unless `SEND_EMAIIL` is True.

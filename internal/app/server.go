@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/crewjam/saml/samlsp"
 )
 
 type Server struct {
@@ -15,16 +17,20 @@ type Server struct {
 	logger         *log.Logger
 	sessionManager *SessionManager
 	csrfManager    *CSRFManager
+	samlSP         *samlsp.Middleware
+	samlConfig     *SAMLConfig
 	settings       Settings
 }
 
-func NewServer(store store.Store, renderer *Renderer, logger *log.Logger, sessionManager *SessionManager, csrfManager *CSRFManager, settings Settings) *Server {
+func NewServer(store store.Store, renderer *Renderer, logger *log.Logger, sessionManager *SessionManager, csrfManager *CSRFManager, samlSP *samlsp.Middleware, samlConfig *SAMLConfig, settings Settings) *Server {
 	return &Server{
 		store:          store,
 		renderer:       renderer,
 		logger:         logger,
 		sessionManager: sessionManager,
 		csrfManager:    csrfManager,
+		samlSP:         samlSP,
+		samlConfig:     samlConfig,
 		settings:       settings,
 	}
 }
@@ -36,6 +42,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/login/", s.handleLogin)
 	mux.HandleFunc("/logout/", s.handleLogout)
 	mux.HandleFunc("/saml/login/", s.handleSAMLLogin)
+	mux.HandleFunc("/saml2/login/", s.handleSAMLLogin)
+	if s.samlSP != nil {
+		mux.Handle("/saml/", s.samlSP)
+		mux.Handle("/saml2/", s.samlSP)
+	}
 	mux.HandleFunc("/checkin/", s.handleCheckin)
 	mux.HandleFunc("/verify/", s.handleVerify)
 	mux.HandleFunc("/", s.requireAuth(s.handleIndex))
@@ -123,6 +134,10 @@ func (s *Server) isCSRFExempt(r *http.Request) bool {
 	case strings.HasPrefix(r.URL.Path, "/checkin/"):
 		return true
 	case strings.HasPrefix(r.URL.Path, "/verify/"):
+		return true
+	case strings.HasPrefix(r.URL.Path, "/saml/"):
+		return true
+	case strings.HasPrefix(r.URL.Path, "/saml2/"):
 		return true
 	default:
 		return false

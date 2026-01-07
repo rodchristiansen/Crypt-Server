@@ -37,7 +37,7 @@ func newTestServer(t *testing.T) (*Server, *store.MemoryStore, *SessionManager) 
 		CookieSecure: false,
 	}
 	csrfManager := NewCSRFManager("crypt_csrf", 32)
-	server := NewServer(memStore, renderer, logger, sessionManager, csrfManager, settings)
+	server := NewServer(memStore, renderer, logger, sessionManager, csrfManager, nil, nil, settings)
 	passwordHash := hashPasswordForTest(t, "password")
 	_, err = memStore.AddUser("admin", passwordHash, true, true, true, false, "local")
 	require.NoError(t, err)

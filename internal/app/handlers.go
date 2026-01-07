@@ -888,7 +888,11 @@ func (s *Server) handlePasswordReset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSAMLLogin(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "SAML login not configured", http.StatusNotImplemented)
+	if s.samlSP == nil {
+		http.Error(w, "SAML login not configured", http.StatusNotImplemented)
+		return
+	}
+	s.samlSP.HandleStartAuthFlow(w, r)
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -963,6 +967,8 @@ func (s *Server) renderError(w http.ResponseWriter, err error) {
 
 func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name string, data TemplateData) error {
 	data.CSRFToken = s.csrfToken(w, r)
+	data.SAMLAvailable = s.samlSP != nil
+	data.SAMLLoginURL = s.samlLoginURL()
 	return s.renderer.Render(w, name, data)
 }
 
@@ -975,6 +981,16 @@ func (s *Server) csrfToken(w http.ResponseWriter, r *http.Request) string {
 		return ""
 	}
 	return token
+}
+
+func (s *Server) samlLoginURL() string {
+	if s.samlConfig == nil {
+		return "/saml/login/"
+	}
+	if strings.HasPrefix(s.samlConfig.MetadataURLPath, "/saml2/") {
+		return "/saml2/login/"
+	}
+	return "/saml/login/"
 }
 
 func (s *Server) renderLoginError(w http.ResponseWriter, r *http.Request, message string) {
@@ -1009,19 +1025,19 @@ func (s *Server) lookupComputer(identifier string) (*store.Computer, error) {
 
 func (s *Server) loadUserFromRequest(r *http.Request) *User {
 	if s.sessionManager == nil {
-		return nil
+		return s.loadUserFromSAML(r)
 	}
 	cookie, err := r.Cookie(s.sessionManager.CookieName())
 	if err != nil {
-		return nil
+		return s.loadUserFromSAML(r)
 	}
 	username, ok := s.sessionManager.Validate(cookie.Value)
 	if !ok {
-		return nil
+		return s.loadUserFromSAML(r)
 	}
 	dbUser, err := s.store.GetUserByUsername(username)
 	if err != nil {
-		return nil
+		return s.loadUserFromSAML(r)
 	}
 	user := mapStoreUser(dbUser)
 	user.IsAuthenticated = true
@@ -1029,6 +1045,95 @@ func (s *Server) loadUserFromRequest(r *http.Request) *User {
 		user.CanApprove = true
 	}
 	return &user
+}
+
+func (s *Server) loadUserFromSAML(r *http.Request) *User {
+	if s.samlSP == nil || s.samlConfig == nil {
+		return nil
+	}
+	session, err := s.samlSP.Session.GetSession(r)
+	if err != nil {
+		return nil
+	}
+	username := usernameFromSAML(session, s.samlConfig)
+	if username == "" {
+		return nil
+	}
+	attributes := attributesFromSession(session)
+	groups := groupMembership(attributes, s.samlConfig.GroupsAttribute)
+	isStaff, canApprove := resolveSAMLPermissions(groups, s.samlConfig)
+
+	dbUser, err := s.store.GetUserByUsername(username)
+	if err != nil {
+		if err != store.ErrNotFound || !s.samlConfig.CreateUnknownUser {
+			return nil
+		}
+		newUser, err := s.store.AddUser(
+			username,
+			"",
+			isStaff,
+			canApprove,
+			s.samlConfig.DefaultLocalLogin,
+			s.samlConfig.DefaultMustReset,
+			s.samlConfig.DefaultAuthSource,
+		)
+		if err != nil {
+			return nil
+		}
+		user := mapStoreUser(newUser)
+		user.IsAuthenticated = true
+		return &user
+	}
+
+	updatedUser := dbUser
+	shouldUpdate := false
+	if s.shouldUpdateStaff() {
+		if dbUser.IsStaff != isStaff {
+			updatedUser.IsStaff = isStaff
+			shouldUpdate = true
+		}
+	}
+	if s.shouldUpdateApprover() {
+		if dbUser.CanApprove != canApprove {
+			updatedUser.CanApprove = canApprove
+			shouldUpdate = true
+		}
+	}
+	if s.samlConfig.DefaultAuthSource != "" && dbUser.AuthSource != s.samlConfig.DefaultAuthSource {
+		updatedUser.AuthSource = s.samlConfig.DefaultAuthSource
+		shouldUpdate = true
+	}
+	if shouldUpdate {
+		updatedUser, err = s.store.UpdateUser(
+			dbUser.ID,
+			dbUser.Username,
+			updatedUser.IsStaff,
+			updatedUser.CanApprove,
+			dbUser.LocalLoginEnabled,
+			dbUser.MustResetPassword,
+			updatedUser.AuthSource,
+		)
+		if err != nil {
+			return nil
+		}
+	}
+	user := mapStoreUser(updatedUser)
+	user.IsAuthenticated = true
+	return &user
+}
+
+func (s *Server) shouldUpdateStaff() bool {
+	if s.samlConfig == nil {
+		return false
+	}
+	return len(s.samlConfig.StaffGroups) > 0 || len(s.samlConfig.SuperuserGroups) > 0
+}
+
+func (s *Server) shouldUpdateApprover() bool {
+	if s.samlConfig == nil {
+		return false
+	}
+	return len(s.samlConfig.CanApproveGroups) > 0 || len(s.samlConfig.SuperuserGroups) > 0
 }
 
 func mapStoreUser(user *store.User) User {

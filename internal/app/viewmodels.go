@@ -57,6 +57,8 @@ type TemplateData struct {
 	AdminUser                     *store.User
 	CSRFToken                     string
 	PasswordChangeRequiresCurrent bool
+	SAMLAvailable                 bool
+	SAMLLoginURL                  string
 }
 
 type UserForm struct {
