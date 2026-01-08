@@ -515,6 +515,11 @@ func TestHandleNewUser(t *testing.T) {
 	require.True(t, user.LocalLoginEnabled)
 	require.Equal(t, "local", user.AuthSource)
 	require.True(t, verifyPassword("Str0ng!Passw0rd", user.PasswordHash))
+	events, err := memStore.ListAuditEvents()
+	require.NoError(t, err)
+	event, ok := findAuditEvent(events, "user_created")
+	require.True(t, ok)
+	require.Equal(t, "newuser", event.TargetUser)
 }
 
 func TestHandleUserEdit(t *testing.T) {
@@ -542,6 +547,12 @@ func TestHandleUserEdit(t *testing.T) {
 	require.True(t, updated.CanApprove)
 	require.True(t, updated.MustResetPassword)
 	require.Equal(t, "saml", updated.AuthSource)
+	events, err := memStore.ListAuditEvents()
+	require.NoError(t, err)
+	_, ok := findAuditEvent(events, "user_updated")
+	require.True(t, ok)
+	_, ok = findAuditEvent(events, "force_reset_enabled")
+	require.True(t, ok)
 }
 
 func TestHandleUserPassword(t *testing.T) {
@@ -576,6 +587,11 @@ func TestHandleUserDelete(t *testing.T) {
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	_, err = memStore.GetUserByID(target.ID)
 	require.Error(t, err)
+	events, err := memStore.ListAuditEvents()
+	require.NoError(t, err)
+	event, ok := findAuditEvent(events, "user_deleted")
+	require.True(t, ok)
+	require.Equal(t, "remove", event.TargetUser)
 }
 
 func TestHandleUserDeleteSelf(t *testing.T) {
@@ -593,6 +609,15 @@ func TestHandleUserDeleteSelf(t *testing.T) {
 
 func intToString(value int) string {
 	return strconv.Itoa(value)
+}
+
+func findAuditEvent(events []*store.AuditEvent, action string) (*store.AuditEvent, bool) {
+	for _, event := range events {
+		if event.Action == action {
+			return event, true
+		}
+	}
+	return nil, false
 }
 
 func newAuthenticatedRequest(t *testing.T, sessionManager *SessionManager, method, target string, body io.Reader, username string) *http.Request {

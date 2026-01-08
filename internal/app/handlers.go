@@ -600,6 +600,10 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 			s.renderError(w, err)
 			return
 		}
+		if _, err := s.store.AddAuditEvent(s.currentUser(r).Username, username, "user_created", "", clientIP(r)); err != nil {
+			s.renderError(w, err)
+			return
+		}
 		http.Redirect(w, r, "/admin/users/", http.StatusSeeOther)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -700,6 +704,12 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			s.renderError(w, err)
 			return
+		}
+		if reason := buildUserUpdateReason(user, updated); reason != "" {
+			if _, err := s.store.AddAuditEvent(s.currentUser(r).Username, updated.Username, "user_updated", reason, clientIP(r)); err != nil {
+				s.renderError(w, err)
+				return
+			}
 		}
 		if user.MustResetPassword != mustReset {
 			action := "force_reset_disabled"
@@ -830,6 +840,10 @@ func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := s.store.DeleteUser(user.ID); err != nil {
+			s.renderError(w, err)
+			return
+		}
+		if _, err := s.store.AddAuditEvent(s.currentUser(r).Username, user.Username, "user_deleted", "", clientIP(r)); err != nil {
 			s.renderError(w, err)
 			return
 		}
@@ -1110,6 +1124,26 @@ func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name str
 	data.SAMLAvailable = s.samlSP != nil
 	data.SAMLLoginURL = s.samlLoginURL()
 	return s.renderer.Render(w, name, data)
+}
+
+func buildUserUpdateReason(before, after *store.User) string {
+	changes := make([]string, 0, 5)
+	if before.Username != after.Username {
+		changes = append(changes, "username")
+	}
+	if before.IsStaff != after.IsStaff {
+		changes = append(changes, "is_staff")
+	}
+	if before.CanApprove != after.CanApprove {
+		changes = append(changes, "can_approve")
+	}
+	if before.LocalLoginEnabled != after.LocalLoginEnabled {
+		changes = append(changes, "local_login_enabled")
+	}
+	if before.AuthSource != after.AuthSource {
+		changes = append(changes, "auth_source")
+	}
+	return strings.Join(changes, ",")
 }
 
 func clientIP(r *http.Request) string {
