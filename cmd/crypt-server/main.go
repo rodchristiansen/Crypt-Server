@@ -19,6 +19,9 @@ func main() {
 	printMigrations := flag.Bool("print-migrations", false, "Print embedded migrations and exit")
 	validateMigrations := flag.Bool("validate-migrations", false, "Validate embedded migrations and exit")
 	migrationsDriver := flag.String("migrations-driver", "", "Migrations driver to target (postgres or sqlite)")
+	createAdmin := flag.Bool("create-admin", false, "Create the first admin user and exit")
+	adminUsername := flag.String("admin-username", "", "Username for the first admin user")
+	adminPassword := flag.String("admin-password", "", "Password for the first admin user")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "crypt-server ", log.LstdFlags)
@@ -71,6 +74,14 @@ func main() {
 		logger.Printf("using sqlite store")
 	default:
 		logger.Fatalf("unsupported database driver: %s", dbConfig.driver)
+	}
+
+	if *createAdmin {
+		if err := createFirstAdmin(dataStore, *adminUsername, *adminPassword); err != nil {
+			logger.Fatalf("create admin failed: %v", err)
+		}
+		logger.Printf("created first admin user: %s", *adminUsername)
+		return
 	}
 	renderer := app.NewRenderer("web/templates/layouts/base.html", "web/templates/pages")
 	sessionKey := os.Getenv("SESSION_KEY")

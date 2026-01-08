@@ -95,6 +95,14 @@ Example:
 ```
 ./crypt-server -validate-migrations -migrations-driver=postgres
 ```
+
+## First admin creation
+
+Create the initial admin user (only works when no users exist yet):
+
+```
+./crypt-server -create-admin -admin-username=admin -admin-password='your-password'
+```
 ## Screenshots
 
 Main Page:
