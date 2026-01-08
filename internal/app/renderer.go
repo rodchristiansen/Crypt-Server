@@ -26,7 +26,10 @@ func (r *Renderer) Render(w http.ResponseWriter, name string, data any) error {
 	if !ok {
 		layout := r.baseLayout
 		pagePath := filepath.Join(r.pageDir, name+".html")
-		parsed, err := template.ParseFiles(layout, pagePath)
+		parsed, err := template.New("base").Funcs(template.FuncMap{
+			"add": func(a, b int) int { return a + b },
+			"sub": func(a, b int) int { return a - b },
+		}).ParseFiles(layout, pagePath)
 		if err != nil {
 			return fmt.Errorf("parse templates: %w", err)
 		}

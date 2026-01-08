@@ -3,6 +3,13 @@
 <div class="row">
   <div class="col-md-12">
     <h2>Audit Log</h2>
+    <form class="form-inline mb-3" method="get" action="/admin/audit/">
+      <input class="form-control mr-2" type="text" name="q" value="{{.AuditSearch}}" placeholder="Search audit log">
+      <button class="btn btn-primary" type="submit">Search</button>
+      {{if .AuditSearch}}
+        <a class="btn btn-link" href="/admin/audit/">Clear</a>
+      {{end}}
+    </form>
     <table class="table table-striped">
       <thead>
         <tr>
@@ -33,6 +40,25 @@
         {{end}}
       </tbody>
     </table>
+    {{if gt .AuditTotalPages 1}}
+      <nav>
+        <ul class="pagination">
+          {{if gt .AuditPage 1}}
+            <li class="page-item">
+              <a class="page-link" href="/admin/audit/?q={{.AuditSearch}}&page={{sub .AuditPage 1}}">Previous</a>
+            </li>
+          {{end}}
+          <li class="page-item disabled">
+            <span class="page-link">Page {{.AuditPage}} of {{.AuditTotalPages}}</span>
+          </li>
+          {{if lt .AuditPage .AuditTotalPages}}
+            <li class="page-item">
+              <a class="page-link" href="/admin/audit/?q={{.AuditSearch}}&page={{add .AuditPage 1}}">Next</a>
+            </li>
+          {{end}}
+        </ul>
+      </nav>
+    {{end}}
   </div>
 </div>
 {{end}}

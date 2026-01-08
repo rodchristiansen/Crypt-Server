@@ -39,4 +39,9 @@ type Store interface {
 	SetSecretRotationRequired(secretID int, rotationRequired bool) (*Secret, error)
 	AddAuditEvent(actor, targetUser, action, reason, ipAddress string) (*AuditEvent, error)
 	ListAuditEvents() ([]*AuditEvent, error)
+	SearchAuditEvents(query string) ([]*AuditEvent, error)
+	ListAuditEventsPaged(limit, offset int) ([]*AuditEvent, error)
+	SearchAuditEventsPaged(query string, limit, offset int) ([]*AuditEvent, error)
+	CountAuditEvents() (int, error)
+	CountSearchAuditEvents(query string) (int, error)
 }

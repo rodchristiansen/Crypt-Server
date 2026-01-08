@@ -539,23 +539,92 @@ func (s *PostgresStore) ListAuditEvents() ([]*AuditEvent, error) {
 	}
 	defer rows.Close()
 
-	events := make([]*AuditEvent, 0)
-	for rows.Next() {
-		var event AuditEvent
-		var reason sql.NullString
-		var ipAddress sql.NullString
-		if err := rows.Scan(&event.ID, &event.Actor, &event.TargetUser, &event.Action, &reason, &ipAddress, &event.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan audit event: %w", err)
-		}
-		if reason.Valid {
-			event.Reason = reason.String
-		}
-		if ipAddress.Valid {
-			event.IPAddress = ipAddress.String
-		}
-		events = append(events, &event)
+	return scanAuditEvents(rows)
+}
+
+func (s *PostgresStore) SearchAuditEvents(query string) ([]*AuditEvent, error) {
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT id, actor, target_user, action, reason, ip_address, created_at
+		 FROM audit_events
+		 WHERE actor ILIKE $1
+		    OR target_user ILIKE $1
+		    OR action ILIKE $1
+		    OR COALESCE(reason, '') ILIKE $1
+		    OR COALESCE(ip_address, '') ILIKE $1
+		 ORDER BY created_at DESC, id DESC`,
+		pattern,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search audit events: %w", err)
 	}
-	return events, rows.Err()
+	defer rows.Close()
+
+	return scanAuditEvents(rows)
+}
+
+func (s *PostgresStore) ListAuditEventsPaged(limit, offset int) ([]*AuditEvent, error) {
+	rows, err := s.db.Query(
+		`SELECT id, actor, target_user, action, reason, ip_address, created_at
+		 FROM audit_events
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $1 OFFSET $2`,
+		limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list audit events paged: %w", err)
+	}
+	defer rows.Close()
+
+	return scanAuditEvents(rows)
+}
+
+func (s *PostgresStore) SearchAuditEventsPaged(query string, limit, offset int) ([]*AuditEvent, error) {
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT id, actor, target_user, action, reason, ip_address, created_at
+		 FROM audit_events
+		 WHERE actor ILIKE $1
+		    OR target_user ILIKE $1
+		    OR action ILIKE $1
+		    OR COALESCE(reason, '') ILIKE $1
+		    OR COALESCE(ip_address, '') ILIKE $1
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT $2 OFFSET $3`,
+		pattern, limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search audit events paged: %w", err)
+	}
+	defer rows.Close()
+
+	return scanAuditEvents(rows)
+}
+
+func (s *PostgresStore) CountAuditEvents() (int, error) {
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM audit_events`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count audit events: %w", err)
+	}
+	return count, nil
+}
+
+func (s *PostgresStore) CountSearchAuditEvents(query string) (int, error) {
+	pattern := "%" + query + "%"
+	var count int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*)
+		 FROM audit_events
+		 WHERE actor ILIKE $1
+		    OR target_user ILIKE $1
+		    OR action ILIKE $1
+		    OR COALESCE(reason, '') ILIKE $1
+		    OR COALESCE(ip_address, '') ILIKE $1`,
+		pattern,
+	).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count audit events search: %w", err)
+	}
+	return count, nil
 }
 
 func (s *PostgresStore) decryptSecret(secret *Secret) (*Secret, error) {
@@ -611,6 +680,26 @@ func scanRequest(row scanner) (*Request, error) {
 	}
 
 	return &request, nil
+}
+
+func scanAuditEvents(rows *sql.Rows) ([]*AuditEvent, error) {
+	events := make([]*AuditEvent, 0)
+	for rows.Next() {
+		var event AuditEvent
+		var reason sql.NullString
+		var ipAddress sql.NullString
+		if err := rows.Scan(&event.ID, &event.Actor, &event.TargetUser, &event.Action, &reason, &ipAddress, &event.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan audit event: %w", err)
+		}
+		if reason.Valid {
+			event.Reason = reason.String
+		}
+		if ipAddress.Valid {
+			event.IPAddress = ipAddress.String
+		}
+		events = append(events, &event)
+	}
+	return events, rows.Err()
 }
 
 func nullableString(value string) sql.NullString {

@@ -56,6 +56,11 @@ type TemplateData struct {
 	NewUser                       UserForm
 	AdminUser                     *store.User
 	AuditEvents                   []*store.AuditEvent
+	AuditSearch                   string
+	AuditPage                     int
+	AuditPageSize                 int
+	AuditTotal                    int
+	AuditTotalPages               int
 	CSRFToken                     string
 	PasswordChangeRequiresCurrent bool
 	SAMLAvailable                 bool

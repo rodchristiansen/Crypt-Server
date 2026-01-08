@@ -74,6 +74,135 @@ func (s *rotationTrackingStore) SetSecretRotationRequired(secretID int, rotation
 	return s.SQLiteStore.SetSecretRotationRequired(secretID, rotationRequired)
 }
 
+type auditPaginationStore struct {
+	lastLimit  int
+	lastOffset int
+}
+
+func (s *auditPaginationStore) ListAuditEventsPaged(limit, offset int) ([]*store.AuditEvent, error) {
+	s.lastLimit = limit
+	s.lastOffset = offset
+	return []*store.AuditEvent{}, nil
+}
+
+func (s *auditPaginationStore) SearchAuditEventsPaged(query string, limit, offset int) ([]*store.AuditEvent, error) {
+	s.lastLimit = limit
+	s.lastOffset = offset
+	return []*store.AuditEvent{}, nil
+}
+
+func (s *auditPaginationStore) CountAuditEvents() (int, error) {
+	return 1, nil
+}
+
+func (s *auditPaginationStore) CountSearchAuditEvents(query string) (int, error) {
+	return 1, nil
+}
+
+func (s *auditPaginationStore) ListAuditEvents() ([]*store.AuditEvent, error) {
+	return []*store.AuditEvent{}, nil
+}
+
+func (s *auditPaginationStore) SearchAuditEvents(query string) ([]*store.AuditEvent, error) {
+	return []*store.AuditEvent{}, nil
+}
+
+func (s *auditPaginationStore) AddAuditEvent(actor, targetUser, action, reason, ipAddress string) (*store.AuditEvent, error) {
+	return &store.AuditEvent{}, nil
+}
+
+func (s *auditPaginationStore) AddComputer(serial, username, computerName string) (*store.Computer, error) {
+	return nil, store.ErrNotFound
+}
+
+func (s *auditPaginationStore) UpsertComputer(serial, username, computerName string, lastCheckin time.Time) (*store.Computer, error) {
+	return nil, store.ErrNotFound
+}
+
+func (s *auditPaginationStore) ListComputers() ([]*store.Computer, error) {
+	return []*store.Computer{}, nil
+}
+
+func (s *auditPaginationStore) GetComputerByID(id int) (*store.Computer, error) {
+	return nil, store.ErrNotFound
+}
+
+func (s *auditPaginationStore) GetComputerBySerial(serial string) (*store.Computer, error) {
+	return nil, store.ErrNotFound
+}
+
+func (s *auditPaginationStore) AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*store.Secret, error) {
+	return nil, store.ErrNotFound
+}
+
+func (s *auditPaginationStore) ListSecretsByComputer(computerID int) ([]*store.Secret, error) {
+	return []*store.Secret{}, nil
+}
+
+func (s *auditPaginationStore) GetSecretByID(id int) (*store.Secret, error) {
+	return nil, store.ErrNotFound
+}
+
+func (s *auditPaginationStore) GetLatestSecretByComputerAndType(computerID int, secretType string) (*store.Secret, error) {
+	return nil, store.ErrNotFound
+}
+
+func (s *auditPaginationStore) AddRequest(secretID int, requestingUser, reason string, approvedBy string, approved *bool) (*store.Request, error) {
+	return nil, store.ErrNotFound
+}
+
+func (s *auditPaginationStore) ListRequestsBySecret(secretID int) ([]*store.Request, error) {
+	return []*store.Request{}, nil
+}
+
+func (s *auditPaginationStore) ListOutstandingRequests() ([]*store.Request, error) {
+	return []*store.Request{}, nil
+}
+
+func (s *auditPaginationStore) GetRequestByID(id int) (*store.Request, error) {
+	return nil, store.ErrNotFound
+}
+
+func (s *auditPaginationStore) ApproveRequest(requestID int, approved bool, reason, approver string) (*store.Request, error) {
+	return nil, store.ErrNotFound
+}
+
+func (s *auditPaginationStore) AddUser(username, passwordHash string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*store.User, error) {
+	return nil, nil
+}
+
+func (s *auditPaginationStore) GetUserByUsername(username string) (*store.User, error) {
+	return &store.User{ID: 1, Username: username, IsStaff: true, LocalLoginEnabled: true}, nil
+}
+
+func (s *auditPaginationStore) ListUsers() ([]*store.User, error) {
+	return []*store.User{}, nil
+}
+
+func (s *auditPaginationStore) GetUserByID(id int) (*store.User, error) {
+	return &store.User{ID: id, Username: "user"}, nil
+}
+
+func (s *auditPaginationStore) UpdateUser(id int, username string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) (*store.User, error) {
+	return &store.User{ID: id, Username: username}, nil
+}
+
+func (s *auditPaginationStore) UpdateUserPassword(id int, passwordHash string, mustResetPassword bool) (*store.User, error) {
+	return &store.User{ID: id, Username: "user"}, nil
+}
+
+func (s *auditPaginationStore) DeleteUser(id int) error {
+	return nil
+}
+
+func (s *auditPaginationStore) CleanupRequests(approvedBefore time.Time) (int, error) {
+	return 0, nil
+}
+
+func (s *auditPaginationStore) SetSecretRotationRequired(secretID int, rotationRequired bool) (*store.Secret, error) {
+	return nil, store.ErrNotFound
+}
+
 func TestHandleIndex(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	_, err := memStore.AddComputer("SERIAL1", "user", "Mac")
@@ -270,6 +399,40 @@ func TestIDFromPath(t *testing.T) {
 
 	_, err = idFromPath("/info/", "/other/123/")
 	require.Error(t, err)
+}
+
+func TestAuditLogSearch(t *testing.T) {
+	codec := testCodec(t)
+	sqliteStore := newTestSQLiteStore(t, codec)
+	server, sessionManager := newTestServerWithStore(t, sqliteStore)
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := sqliteStore.AddUser("admin", passwordHash, true, true, true, false, "local")
+	require.NoError(t, err)
+	_, err = sqliteStore.AddAuditEvent("admin", "user1", "password_reset", "reason", "127.0.0.1")
+	require.NoError(t, err)
+	_, err = sqliteStore.AddAuditEvent("admin", "user2", "user_deleted", "", "127.0.0.1")
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/admin/audit/?q=reset", nil, "admin")
+	serveProtected(server, rec, req, server.handleAuditLog)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "password_reset")
+	require.NotContains(t, rec.Body.String(), "user_deleted")
+}
+
+func TestAuditLogPaginationUsesPageParam(t *testing.T) {
+	storeSpy := &auditPaginationStore{}
+	server, sessionManager := newTestServerWithStore(t, storeSpy)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/admin/audit/?page=2", nil, "admin")
+	serveProtected(server, rec, req, server.handleAuditLog)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 50, storeSpy.lastLimit)
+	require.Equal(t, 50, storeSpy.lastOffset)
 }
 
 func TestClientIP(t *testing.T) {

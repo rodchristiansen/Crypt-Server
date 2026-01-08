@@ -348,3 +348,67 @@ func TestSQLiteStoreAuditEvents(t *testing.T) {
 	require.Equal(t, "force_reset_enabled", events[0].Action)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestSQLiteStoreSearchAuditEvents(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	store := NewSQLiteStoreWithDB(db, testCodec(t))
+	now := time.Now()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT id, actor, target_user, action, reason, ip_address, created_at FROM audit_events WHERE lower(actor) LIKE lower(?) OR lower(target_user) LIKE lower(?) OR lower(action) LIKE lower(?) OR lower(COALESCE(reason, '')) LIKE lower(?) OR lower(COALESCE(ip_address, '')) LIKE lower(?) ORDER BY created_at DESC, id DESC",
+	)).WithArgs("%reset%", "%reset%", "%reset%", "%reset%", "%reset%").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "actor", "target_user", "action", "reason", "ip_address", "created_at"}).
+			AddRow(3, "admin", "user", "password_reset", "reason", "127.0.0.1", now))
+
+	events, err := store.SearchAuditEvents("reset")
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "password_reset", events[0].Action)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSQLiteStoreAuditEventsPagingAndCount(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	store := NewSQLiteStoreWithDB(db, testCodec(t))
+	now := time.Now()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT COUNT(*) FROM audit_events",
+	)).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(120))
+
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT id, actor, target_user, action, reason, ip_address, created_at FROM audit_events ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?",
+	)).WithArgs(50, 50).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "actor", "target_user", "action", "reason", "ip_address", "created_at"}).
+			AddRow(10, "admin", "user", "password_reset", nil, nil, now))
+
+	count, err := store.CountAuditEvents()
+	require.NoError(t, err)
+	require.Equal(t, 120, count)
+
+	events, err := store.ListAuditEventsPaged(50, 50)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSQLiteStoreCountSearchAuditEvents(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	store := NewSQLiteStoreWithDB(db, testCodec(t))
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT COUNT(*) FROM audit_events WHERE lower(actor) LIKE lower(?) OR lower(target_user) LIKE lower(?) OR lower(action) LIKE lower(?) OR lower(COALESCE(reason, '')) LIKE lower(?) OR lower(COALESCE(ip_address, '')) LIKE lower(?)",
+	)).WithArgs("%reset%", "%reset%", "%reset%", "%reset%", "%reset%").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(5))
+
+	count, err := store.CountSearchAuditEvents("reset")
+	require.NoError(t, err)
+	require.Equal(t, 5, count)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

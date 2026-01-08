@@ -516,23 +516,92 @@ func (s *SQLiteStore) ListAuditEvents() ([]*AuditEvent, error) {
 	}
 	defer rows.Close()
 
-	events := make([]*AuditEvent, 0)
-	for rows.Next() {
-		var event AuditEvent
-		var reason sql.NullString
-		var ipAddress sql.NullString
-		if err := rows.Scan(&event.ID, &event.Actor, &event.TargetUser, &event.Action, &reason, &ipAddress, &event.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan audit event: %w", err)
-		}
-		if reason.Valid {
-			event.Reason = reason.String
-		}
-		if ipAddress.Valid {
-			event.IPAddress = ipAddress.String
-		}
-		events = append(events, &event)
+	return scanAuditEventsSQLite(rows)
+}
+
+func (s *SQLiteStore) SearchAuditEvents(query string) ([]*AuditEvent, error) {
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT id, actor, target_user, action, reason, ip_address, created_at
+		 FROM audit_events
+		 WHERE lower(actor) LIKE lower(?)
+		    OR lower(target_user) LIKE lower(?)
+		    OR lower(action) LIKE lower(?)
+		    OR lower(COALESCE(reason, '')) LIKE lower(?)
+		    OR lower(COALESCE(ip_address, '')) LIKE lower(?)
+		 ORDER BY created_at DESC, id DESC`,
+		pattern, pattern, pattern, pattern, pattern,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search audit events: %w", err)
 	}
-	return events, rows.Err()
+	defer rows.Close()
+
+	return scanAuditEventsSQLite(rows)
+}
+
+func (s *SQLiteStore) ListAuditEventsPaged(limit, offset int) ([]*AuditEvent, error) {
+	rows, err := s.db.Query(
+		`SELECT id, actor, target_user, action, reason, ip_address, created_at
+		 FROM audit_events
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT ? OFFSET ?`,
+		limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list audit events paged: %w", err)
+	}
+	defer rows.Close()
+
+	return scanAuditEventsSQLite(rows)
+}
+
+func (s *SQLiteStore) SearchAuditEventsPaged(query string, limit, offset int) ([]*AuditEvent, error) {
+	pattern := "%" + query + "%"
+	rows, err := s.db.Query(
+		`SELECT id, actor, target_user, action, reason, ip_address, created_at
+		 FROM audit_events
+		 WHERE lower(actor) LIKE lower(?)
+		    OR lower(target_user) LIKE lower(?)
+		    OR lower(action) LIKE lower(?)
+		    OR lower(COALESCE(reason, '')) LIKE lower(?)
+		    OR lower(COALESCE(ip_address, '')) LIKE lower(?)
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT ? OFFSET ?`,
+		pattern, pattern, pattern, pattern, pattern, limit, offset,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("search audit events paged: %w", err)
+	}
+	defer rows.Close()
+
+	return scanAuditEventsSQLite(rows)
+}
+
+func (s *SQLiteStore) CountAuditEvents() (int, error) {
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM audit_events`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count audit events: %w", err)
+	}
+	return count, nil
+}
+
+func (s *SQLiteStore) CountSearchAuditEvents(query string) (int, error) {
+	pattern := "%" + query + "%"
+	var count int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*)
+		 FROM audit_events
+		 WHERE lower(actor) LIKE lower(?)
+		    OR lower(target_user) LIKE lower(?)
+		    OR lower(action) LIKE lower(?)
+		    OR lower(COALESCE(reason, '')) LIKE lower(?)
+		    OR lower(COALESCE(ip_address, '')) LIKE lower(?)`,
+		pattern, pattern, pattern, pattern, pattern,
+	).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count audit events search: %w", err)
+	}
+	return count, nil
 }
 
 func (s *SQLiteStore) decryptSecret(secret *Secret) (*Secret, error) {
@@ -556,4 +625,24 @@ func scanSecret(row scanner) (*Secret, error) {
 	}
 	secret.RotationRequired = rotation != 0
 	return &secret, nil
+}
+
+func scanAuditEventsSQLite(rows *sql.Rows) ([]*AuditEvent, error) {
+	events := make([]*AuditEvent, 0)
+	for rows.Next() {
+		var event AuditEvent
+		var reason sql.NullString
+		var ipAddress sql.NullString
+		if err := rows.Scan(&event.ID, &event.Actor, &event.TargetUser, &event.Action, &reason, &ipAddress, &event.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan audit event: %w", err)
+		}
+		if reason.Valid {
+			event.Reason = reason.String
+		}
+		if ipAddress.Valid {
+			event.IPAddress = ipAddress.String
+		}
+		events = append(events, &event)
+	}
+	return events, rows.Err()
 }

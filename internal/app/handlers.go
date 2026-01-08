@@ -794,12 +794,54 @@ func (s *Server) handleAuditLog(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	events, err := s.store.ListAuditEvents()
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	page := parsePage(r.URL.Query().Get("page"))
+	const pageSize = 50
+	offset := (page - 1) * pageSize
+
+	var (
+		events []*store.AuditEvent
+		total  int
+		err    error
+	)
+	if query == "" {
+		total, err = s.store.CountAuditEvents()
+		if err != nil {
+			s.renderError(w, err)
+			return
+		}
+		events, err = s.store.ListAuditEventsPaged(pageSize, offset)
+	} else {
+		total, err = s.store.CountSearchAuditEvents(query)
+		if err != nil {
+			s.renderError(w, err)
+			return
+		}
+		events, err = s.store.SearchAuditEventsPaged(query, pageSize, offset)
+	}
 	if err != nil {
 		s.renderError(w, err)
 		return
 	}
-	data := TemplateData{Title: "Audit Log", User: s.currentUser(r), AuditEvents: events}
+
+	totalPages := 1
+	if total > 0 {
+		totalPages = (total + pageSize - 1) / pageSize
+		if page > totalPages {
+			page = totalPages
+		}
+	}
+
+	data := TemplateData{
+		Title:           "Audit Log",
+		User:            s.currentUser(r),
+		AuditEvents:     events,
+		AuditSearch:     query,
+		AuditPage:       page,
+		AuditPageSize:   pageSize,
+		AuditTotal:      total,
+		AuditTotalPages: totalPages,
+	}
 	if err := s.renderTemplate(w, r, "audit_log", data); err != nil {
 		s.renderError(w, err)
 	}
@@ -1161,6 +1203,18 @@ func clientIP(r *http.Request) string {
 		return host
 	}
 	return strings.TrimSpace(r.RemoteAddr)
+}
+
+func parsePage(raw string) int {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 1
+	}
+	page, err := strconv.Atoi(value)
+	if err != nil || page < 1 {
+		return 1
+	}
+	return page
 }
 
 func (s *Server) csrfToken(w http.ResponseWriter, r *http.Request) string {
