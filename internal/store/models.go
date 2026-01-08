@@ -42,3 +42,13 @@ type User struct {
 	MustResetPassword bool
 	AuthSource        string
 }
+
+type AuditEvent struct {
+	ID         int
+	Actor      string
+	TargetUser string
+	Action     string
+	Reason     string
+	IPAddress  string
+	CreatedAt  time.Time
+}

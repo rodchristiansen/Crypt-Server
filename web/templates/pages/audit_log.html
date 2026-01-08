@@ -1,0 +1,38 @@
+{{define "title"}}Audit Log{{end}}
+{{define "content"}}
+<div class="row">
+  <div class="col-md-12">
+    <h2>Audit Log</h2>
+    <table class="table table-striped">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Actor</th>
+          <th>Target</th>
+          <th>Action</th>
+          <th>Reason</th>
+          <th>IP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{if .AuditEvents}}
+          {{range .AuditEvents}}
+            <tr>
+              <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+              <td>{{.Actor}}</td>
+              <td>{{.TargetUser}}</td>
+              <td>{{.Action}}</td>
+              <td>{{.Reason}}</td>
+              <td>{{.IPAddress}}</td>
+            </tr>
+          {{end}}
+        {{else}}
+          <tr>
+            <td colspan="6">No audit events yet.</td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}

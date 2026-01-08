@@ -300,3 +300,31 @@ func TestPostgresStoreSetSecretRotationRequired(t *testing.T) {
 	require.True(t, updated.RotationRequired)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestPostgresStoreAuditEvents(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+
+	store := NewPostgresStoreWithDB(db, testCodec(t))
+	now := time.Now()
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"INSERT INTO audit_events (actor, target_user, action, reason, ip_address) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at",
+	)).WithArgs("admin", "user", "password_reset", sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(1, now))
+
+	event, err := store.AddAuditEvent("admin", "user", "password_reset", "", "")
+	require.NoError(t, err)
+	require.Equal(t, 1, event.ID)
+
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT id, actor, target_user, action, reason, ip_address, created_at FROM audit_events ORDER BY created_at DESC, id DESC",
+	)).WillReturnRows(sqlmock.NewRows([]string{"id", "actor", "target_user", "action", "reason", "ip_address", "created_at"}).
+		AddRow(2, "admin", "user", "force_reset_enabled", nil, nil, now))
+
+	events, err := store.ListAuditEvents()
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "force_reset_enabled", events[0].Action)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

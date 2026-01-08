@@ -38,3 +38,13 @@ CREATE TABLE IF NOT EXISTS users (
     must_reset_password BOOLEAN NOT NULL DEFAULT 0,
     auth_source TEXT NOT NULL DEFAULT 'local'
 );
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor TEXT NOT NULL,
+    target_user TEXT NOT NULL,
+    action TEXT NOT NULL,
+    reason TEXT NULL,
+    ip_address TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

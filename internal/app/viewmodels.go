@@ -55,6 +55,7 @@ type TemplateData struct {
 	Users                         []*store.User
 	NewUser                       UserForm
 	AdminUser                     *store.User
+	AuditEvents                   []*store.AuditEvent
 	CSRFToken                     string
 	PasswordChangeRequiresCurrent bool
 	SAMLAvailable                 bool

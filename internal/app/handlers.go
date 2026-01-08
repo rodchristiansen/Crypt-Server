@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -700,6 +701,16 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 			s.renderError(w, err)
 			return
 		}
+		if user.MustResetPassword != mustReset {
+			action := "force_reset_disabled"
+			if mustReset {
+				action = "force_reset_enabled"
+			}
+			if _, err := s.store.AddAuditEvent(s.currentUser(r).Username, updated.Username, action, "", clientIP(r)); err != nil {
+				s.renderError(w, err)
+				return
+			}
+		}
 		http.Redirect(w, r, fmt.Sprintf("/admin/users/%d/edit/", updated.ID), http.StatusSeeOther)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -754,9 +765,33 @@ func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
 			s.renderError(w, err)
 			return
 		}
+		if _, err := s.store.AddAuditEvent(s.currentUser(r).Username, user.Username, "password_reset", "", clientIP(r)); err != nil {
+			s.renderError(w, err)
+			return
+		}
 		http.Redirect(w, r, fmt.Sprintf("/admin/users/%d/edit/", user.ID), http.StatusSeeOther)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleAuditLog(w http.ResponseWriter, r *http.Request) {
+	if !s.currentUser(r).IsStaff {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	events, err := s.store.ListAuditEvents()
+	if err != nil {
+		s.renderError(w, err)
+		return
+	}
+	data := TemplateData{Title: "Audit Log", User: s.currentUser(r), AuditEvents: events}
+	if err := s.renderTemplate(w, r, "audit_log", data); err != nil {
+		s.renderError(w, err)
 	}
 }
 
@@ -1075,6 +1110,23 @@ func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name str
 	data.SAMLAvailable = s.samlSP != nil
 	data.SAMLLoginURL = s.samlLoginURL()
 	return s.renderer.Render(w, name, data)
+}
+
+func clientIP(r *http.Request) string {
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
+		return realIP
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil {
+		return host
+	}
+	return strings.TrimSpace(r.RemoteAddr)
 }
 
 func (s *Server) csrfToken(w http.ResponseWriter, r *http.Request) string {

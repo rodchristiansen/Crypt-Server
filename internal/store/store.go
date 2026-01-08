@@ -37,4 +37,6 @@ type Store interface {
 	DeleteUser(id int) error
 	CleanupRequests(approvedBefore time.Time) (int, error)
 	SetSecretRotationRequired(secretID int, rotationRequired bool) (*Secret, error)
+	AddAuditEvent(actor, targetUser, action, reason, ipAddress string) (*AuditEvent, error)
+	ListAuditEvents() ([]*AuditEvent, error)
 }

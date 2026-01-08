@@ -208,6 +208,61 @@ func TestHandleManageRequests(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "SERIAL5")
 }
 
+func TestUserPasswordResetLogsAuditEvent(t *testing.T) {
+	codec := testCodec(t)
+	sqliteStore := newTestSQLiteStore(t, codec)
+	server, sessionManager := newTestServerWithStore(t, sqliteStore)
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := sqliteStore.AddUser("admin", passwordHash, true, true, true, false, "local")
+	require.NoError(t, err)
+	target, err := sqliteStore.AddUser("reset", passwordHash, false, false, true, false, "local")
+	require.NoError(t, err)
+
+	form := url.Values{}
+	form.Set("password", "newpassword")
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/admin/users/"+intToString(target.ID)+"/password/", form, "admin")
+	req.RemoteAddr = "192.0.2.9:1234"
+	serveProtected(server, rec, req, server.handleUserPassword)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	events, err := sqliteStore.ListAuditEvents()
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "admin", events[0].Actor)
+	require.Equal(t, "reset", events[0].TargetUser)
+	require.Equal(t, "password_reset", events[0].Action)
+	require.Equal(t, "192.0.2.9", events[0].IPAddress)
+}
+
+func TestUserEditForceResetLogsAuditEvent(t *testing.T) {
+	codec := testCodec(t)
+	sqliteStore := newTestSQLiteStore(t, codec)
+	server, sessionManager := newTestServerWithStore(t, sqliteStore)
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := sqliteStore.AddUser("admin", passwordHash, true, true, true, false, "local")
+	require.NoError(t, err)
+	target, err := sqliteStore.AddUser("target", passwordHash, false, false, true, false, "local")
+	require.NoError(t, err)
+
+	form := url.Values{}
+	form.Set("username", "target")
+	form.Set("must_reset_password", "on")
+	form.Set("local_login_enabled", "on")
+	form.Set("auth_source", "local")
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/admin/users/"+intToString(target.ID)+"/edit/", form, "admin")
+	req.RemoteAddr = "198.51.100.10:9999"
+	serveProtected(server, rec, req, server.handleUserEdit)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	events, err := sqliteStore.ListAuditEvents()
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, "force_reset_enabled", events[0].Action)
+	require.Equal(t, "198.51.100.10", events[0].IPAddress)
+}
+
 func TestIDFromPath(t *testing.T) {
 	id, err := idFromPath("/info/", "/info/123/")
 	require.NoError(t, err)
@@ -215,6 +270,18 @@ func TestIDFromPath(t *testing.T) {
 
 	_, err = idFromPath("/info/", "/other/123/")
 	require.Error(t, err)
+}
+
+func TestClientIP(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "203.0.113.5:4444"
+	require.Equal(t, "203.0.113.5", clientIP(req))
+
+	req.Header.Set("X-Real-IP", "192.0.2.1")
+	require.Equal(t, "192.0.2.1", clientIP(req))
+
+	req.Header.Set("X-Forwarded-For", "198.51.100.1, 203.0.113.9")
+	require.Equal(t, "198.51.100.1", clientIP(req))
 }
 
 func TestLookupComputer(t *testing.T) {

@@ -509,6 +509,55 @@ func (s *PostgresStore) SetSecretRotationRequired(secretID int, rotationRequired
 	return s.decryptSecret(&secret)
 }
 
+func (s *PostgresStore) AddAuditEvent(actor, targetUser, action, reason, ipAddress string) (*AuditEvent, error) {
+	var id int
+	var createdAt time.Time
+	err := s.db.QueryRow(
+		`INSERT INTO audit_events (actor, target_user, action, reason, ip_address)
+		 VALUES ($1, $2, $3, $4, $5)
+		 RETURNING id, created_at`,
+		actor, targetUser, action, nullableString(reason), nullableString(ipAddress),
+	).Scan(&id, &createdAt)
+	if err != nil {
+		return nil, fmt.Errorf("insert audit event: %w", err)
+	}
+	return &AuditEvent{
+		ID:         id,
+		Actor:      actor,
+		TargetUser: targetUser,
+		Action:     action,
+		Reason:     reason,
+		IPAddress:  ipAddress,
+		CreatedAt:  createdAt,
+	}, nil
+}
+
+func (s *PostgresStore) ListAuditEvents() ([]*AuditEvent, error) {
+	rows, err := s.db.Query(`SELECT id, actor, target_user, action, reason, ip_address, created_at FROM audit_events ORDER BY created_at DESC, id DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("list audit events: %w", err)
+	}
+	defer rows.Close()
+
+	events := make([]*AuditEvent, 0)
+	for rows.Next() {
+		var event AuditEvent
+		var reason sql.NullString
+		var ipAddress sql.NullString
+		if err := rows.Scan(&event.ID, &event.Actor, &event.TargetUser, &event.Action, &reason, &ipAddress, &event.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan audit event: %w", err)
+		}
+		if reason.Valid {
+			event.Reason = reason.String
+		}
+		if ipAddress.Valid {
+			event.IPAddress = ipAddress.String
+		}
+		events = append(events, &event)
+	}
+	return events, rows.Err()
+}
+
 func (s *PostgresStore) decryptSecret(secret *Secret) (*Secret, error) {
 	if s.codec == nil {
 		return nil, ErrMissingCodec

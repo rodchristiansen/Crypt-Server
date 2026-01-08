@@ -62,6 +62,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/approve/", s.requireAuth(s.handleApprove))
 	mux.HandleFunc("/manage-requests/", s.requireAuth(s.handleManageRequests))
 	mux.HandleFunc("/admin/users/", s.requireAuth(s.handleAdminUsers))
+	mux.HandleFunc("/admin/audit/", s.requireAuth(s.handleAuditLog))
 	mux.HandleFunc("/password/change/", s.requireAuth(s.handlePasswordChange))
 	mux.HandleFunc("/password/reset/", s.requireAuth(s.handlePasswordReset))
 
