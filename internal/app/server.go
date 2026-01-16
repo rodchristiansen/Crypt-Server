@@ -11,6 +11,10 @@ import (
 	"github.com/crewjam/saml/samlsp"
 )
 
+// Version is the application version displayed in the UI.
+// Set at build time via: go build -ldflags "-X crypt-server/internal/app.Version=1.0.0"
+var Version = "0.0.0-dev"
+
 type Server struct {
 	store          store.Store
 	renderer       *Renderer
@@ -71,7 +75,8 @@ func (s *Server) Routes() http.Handler {
 
 func withTrailingSlashRedirect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" && !strings.HasSuffix(r.URL.Path, "/") {
+		// Don't redirect static files
+		if !strings.HasPrefix(r.URL.Path, "/static/") && r.URL.Path != "/" && !strings.HasSuffix(r.URL.Path, "/") {
 			http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
 			return
 		}

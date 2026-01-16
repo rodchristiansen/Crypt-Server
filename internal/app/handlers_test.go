@@ -825,3 +825,506 @@ func testCodec(t *testing.T) *crypto.AesGcmCodec {
 	require.NoError(t, err)
 	return codec
 }
+
+// Additional comprehensive tests for missing coverage
+
+func TestHandleNewComputerGET(t *testing.T) {
+	server, _, sessionManager := newTestServer(t)
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/new/computer/", nil, "admin")
+	serveProtected(server, rec, req, server.handleNewComputer)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "New Computer")
+	require.Contains(t, rec.Body.String(), "Serial")
+}
+
+func TestHandleNewComputerPOSTValidation(t *testing.T) {
+	server, _, sessionManager := newTestServer(t)
+	form := url.Values{}
+	form.Set("serial", "")
+	form.Set("computername", "")
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/new/computer/", form, "admin")
+	serveProtected(server, rec, req, server.handleNewComputer)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "Serial number and computer name are required.")
+}
+
+func TestHandleNewSecretGET(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	computer, err := memStore.AddComputer("SERIAL_SECRET_GET", "user", "MacBook Pro")
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/new/secret/"+intToString(computer.ID)+"/", nil, "admin")
+	serveProtected(server, rec, req, server.handleNewSecret)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "New Secret")
+	require.Contains(t, rec.Body.String(), "MacBook Pro")
+}
+
+func TestHandleNewSecretPOST(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	computer, err := memStore.AddComputer("SERIAL_SECRET_POST", "user", "Mac")
+	require.NoError(t, err)
+
+	form := url.Values{}
+	form.Set("secret_type", "recovery_key")
+	form.Set("secret", "test-recovery-key-123456")
+	form.Set("rotation_required", "on")
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/new/secret/"+intToString(computer.ID)+"/", form, "admin")
+	serveProtected(server, rec, req, server.handleNewSecret)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "/info/"+intToString(computer.ID))
+
+	secrets, err := memStore.ListSecretsByComputer(computer.ID)
+	require.NoError(t, err)
+	require.Len(t, secrets, 1)
+	require.Equal(t, "recovery_key", secrets[0].SecretType)
+	require.True(t, secrets[0].RotationRequired)
+}
+
+func TestHandleNewSecretPOSTValidation(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	computer, err := memStore.AddComputer("SERIAL_SECRET_VALID", "user", "Mac")
+	require.NoError(t, err)
+
+	form := url.Values{}
+	form.Set("secret_type", "")
+	form.Set("secret", "")
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/new/secret/"+intToString(computer.ID)+"/", form, "admin")
+	serveProtected(server, rec, req, server.handleNewSecret)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "Secret type and value are required.")
+}
+
+func TestHandleNewSecretInvalidComputer(t *testing.T) {
+	server, _, sessionManager := newTestServer(t)
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/new/secret/99999/", nil, "admin")
+	serveProtected(server, rec, req, server.handleNewSecret)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandleComputerInfo(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	computer, err := memStore.AddComputer("SERIAL_INFO", "testuser", "MacBook Air")
+	require.NoError(t, err)
+	_, err = memStore.AddSecret(computer.ID, "recovery_key", "test-secret", false)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/info/"+intToString(computer.ID)+"/", nil, "admin")
+	serveProtected(server, rec, req, server.handleComputerInfo)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "SERIAL_INFO")
+	require.Contains(t, rec.Body.String(), "MacBook Air")
+	require.Contains(t, rec.Body.String(), "testuser")
+	require.Contains(t, rec.Body.String(), "Recovery Key")
+}
+
+func TestHandleComputerInfoBySerial(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	_, err := memStore.AddComputer("SERIAL_BY_SERIAL", "user", "iMac")
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/info/serial_by_serial/", nil, "admin")
+	serveProtected(server, rec, req, server.handleComputerInfo)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "SERIAL_BY_SERIAL")
+}
+
+func TestHandleComputerInfoNotFound(t *testing.T) {
+	server, _, sessionManager := newTestServer(t)
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/info/99999/", nil, "admin")
+	serveProtected(server, rec, req, server.handleComputerInfo)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestHandleSecretInfo(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	computer, err := memStore.AddComputer("SERIAL_SECRET_INFO", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "password", "secret-pass", false)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/info/secret/"+intToString(secret.ID)+"/", nil, "admin")
+	serveProtected(server, rec, req, server.handleSecretInfo)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "Secret Info")
+	require.Contains(t, rec.Body.String(), "SERIAL_SECRET_INFO")
+	require.Contains(t, rec.Body.String(), "Get Key")
+}
+
+func TestHandleSecretInfoWithPendingRequestNonApprover(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := memStore.AddUser("viewer", passwordHash, false, false, true, false, "local")
+	require.NoError(t, err)
+
+	computer, err := memStore.AddComputer("SERIAL_PENDING", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	_, err = memStore.AddRequest(secret.ID, "viewer", "Need access", "", nil)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/info/secret/"+intToString(secret.ID)+"/", nil, "viewer")
+	serveProtected(server, rec, req, server.handleSecretInfo)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotContains(t, rec.Body.String(), "Request Key")
+	require.Contains(t, rec.Body.String(), "Request Pending")
+}
+
+func TestHandleRequestGET(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	computer, err := memStore.AddComputer("SERIAL_REQUEST_GET", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/request/"+intToString(secret.ID)+"/", nil, "admin")
+	serveProtected(server, rec, req, server.handleRequest)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "Request Secret")
+	require.Contains(t, rec.Body.String(), "SERIAL_REQUEST_GET")
+}
+
+func TestHandleRequestPOSTWithoutAutoApprove(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	server.settings.ApproveOwn = false
+	computer, err := memStore.AddComputer("SERIAL_NO_AUTO", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+
+	form := url.Values{}
+	form.Set("reason_for_request", "Testing no auto-approve")
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/request/"+intToString(secret.ID)+"/", form, "admin")
+	serveProtected(server, rec, req, server.handleRequest)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	requests, err := memStore.ListRequestsBySecret(secret.ID)
+	require.NoError(t, err)
+	require.Len(t, requests, 1)
+	require.Nil(t, requests[0].Approved)
+}
+
+func TestHandleApproveGET(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	server.settings.ApproveOwn = false
+	computer, err := memStore.AddComputer("SERIAL_APPROVE_GET", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	request, err := memStore.AddRequest(secret.ID, "requester", "Need access", "", nil)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/approve/"+intToString(request.ID)+"/", nil, "admin")
+	serveProtected(server, rec, req, server.handleApprove)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "Approve Request")
+	require.Contains(t, rec.Body.String(), "SERIAL_APPROVE_GET")
+	require.Contains(t, rec.Body.String(), "reason_for_approval")
+}
+
+func TestHandleApprovePOSTApprove(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	server.settings.ApproveOwn = false
+	computer, err := memStore.AddComputer("SERIAL_APPROVE", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	request, err := memStore.AddRequest(secret.ID, "requester", "Need access", "", nil)
+	require.NoError(t, err)
+
+	form := url.Values{}
+	form.Set("approved", "1")
+	form.Set("reason_for_approval", "Looks good")
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/approve/"+intToString(request.ID)+"/", form, "admin")
+	serveProtected(server, rec, req, server.handleApprove)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/manage-requests/", rec.Header().Get("Location"))
+
+	updated, err := memStore.GetRequestByID(request.ID)
+	require.NoError(t, err)
+	require.NotNil(t, updated.Approved)
+	require.True(t, *updated.Approved)
+	require.Equal(t, "admin", updated.AuthUser)
+	require.Equal(t, "Looks good", updated.ReasonForApproval)
+}
+
+func TestHandleApprovePOSTDeny(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	server.settings.ApproveOwn = false
+	computer, err := memStore.AddComputer("SERIAL_DENY", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	request, err := memStore.AddRequest(secret.ID, "requester", "Need access", "", nil)
+	require.NoError(t, err)
+
+	form := url.Values{}
+	form.Set("approved", "0")
+	form.Set("reason_for_approval", "Insufficient justification")
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedFormRequest(t, server, sessionManager, http.MethodPost, "/approve/"+intToString(request.ID)+"/", form, "admin")
+	serveProtected(server, rec, req, server.handleApprove)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	updated, err := memStore.GetRequestByID(request.ID)
+	require.NoError(t, err)
+	require.NotNil(t, updated.Approved)
+	require.False(t, *updated.Approved)
+	require.Equal(t, "Insufficient justification", updated.ReasonForApproval)
+}
+
+func TestHandleApproveWithoutPermission(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := memStore.AddUser("noapprove", passwordHash, false, false, true, false, "local")
+	require.NoError(t, err)
+
+	computer, err := memStore.AddComputer("SERIAL_NO_PERM", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "", nil)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/approve/"+intToString(request.ID)+"/", nil, "noapprove")
+	serveProtected(server, rec, req, server.handleApprove)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandleApproveSelfRequestWhenNotAllowed(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	server.settings.ApproveOwn = false
+
+	computer, err := memStore.AddComputer("SERIAL_SELF", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "", nil)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/approve/"+intToString(request.ID)+"/", nil, "admin")
+	serveProtected(server, rec, req, server.handleApprove)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandleLogout(t *testing.T) {
+	server, _, sessionManager := newTestServer(t)
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/logout/", nil, "admin")
+	server.handleLogout(rec, req)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/login/", rec.Header().Get("Location"))
+
+	cookies := rec.Result().Cookies()
+	found := false
+	for _, cookie := range cookies {
+		if cookie.Name == sessionManager.CookieName() {
+			found = true
+			require.Equal(t, "", cookie.Value)
+			require.Equal(t, -1, cookie.MaxAge)
+		}
+	}
+	require.True(t, found)
+}
+
+func TestHandleRetrieveUnapprovedRequest(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	computer, err := memStore.AddComputer("SERIAL_UNAPPROVED", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "", nil)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/retrieve/"+intToString(request.ID)+"/", nil, "admin")
+	serveProtected(server, rec, req, server.handleRetrieve)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandleRetrieveDeniedRequest(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	computer, err := memStore.AddComputer("SERIAL_DENIED", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	approved := false
+	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "approver", &approved)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/retrieve/"+intToString(request.ID)+"/", nil, "admin")
+	serveProtected(server, rec, req, server.handleRetrieve)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandleRetrieveWrongUser(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := memStore.AddUser("other", passwordHash, false, false, true, false, "local")
+	require.NoError(t, err)
+
+	computer, err := memStore.AddComputer("SERIAL_WRONG_USER", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	approved := true
+	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "approver", &approved)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/retrieve/"+intToString(request.ID)+"/", nil, "other")
+	serveProtected(server, rec, req, server.handleRetrieve)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestHandleManageRequestsRequiresApprover(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := memStore.AddUser("viewer", passwordHash, false, false, true, false, "local")
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/manage-requests/", nil, "viewer")
+	serveProtected(server, rec, req, server.handleManageRequests)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestRequireAuthRedirectsToLogin(t *testing.T) {
+	server, _, _ := newTestServer(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	server.withUser(http.HandlerFunc(server.requireAuth(server.handleIndex))).ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "/login/")
+	require.Contains(t, rec.Header().Get("Location"), "next=%2F")
+}
+
+func TestCSRFProtectionBlocksInvalidToken(t *testing.T) {
+	server, _, sessionManager := newTestServer(t)
+	form := url.Values{}
+	form.Set("serial", "TEST")
+	form.Set("username", "user")
+	form.Set("computername", "Mac")
+	form.Set("csrf_token", "invalid-token")
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodPost, "/new/computer/", strings.NewReader(form.Encode()), "admin")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	server.withCSRF(server.withUser(http.HandlerFunc(server.requireAuth(server.handleNewComputer)))).ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "CSRF token missing or invalid")
+}
+
+func TestCheckinDefaultsSecretType(t *testing.T) {
+	server, memStore, _ := newTestServer(t)
+
+	form := url.Values{}
+	form.Set("serial", "SERIAL_DEFAULT_TYPE")
+	form.Set("recovery_password", "secret-value")
+	form.Set("username", "user1")
+	form.Set("macname", "MacBook")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/checkin/", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	server.handleCheckin(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	computer, err := memStore.GetComputerBySerial("SERIAL_DEFAULT_TYPE")
+	require.NoError(t, err)
+	secret, err := memStore.GetLatestSecretByComputerAndType(computer.ID, "recovery_key")
+	require.NoError(t, err)
+	require.NotNil(t, secret)
+}
+
+func TestCheckinMissingRequiredFields(t *testing.T) {
+	server, _, _ := newTestServer(t)
+
+	form := url.Values{}
+	form.Set("serial", "")
+	form.Set("recovery_password", "")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/checkin/", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	server.handleCheckin(rec, req)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestVerifyInvalidPath(t *testing.T) {
+	server, _, _ := newTestServer(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/verify/invalid/", nil)
+	server.handleVerify(rec, req)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestAllApproveSettingGrantsApprovalPermission(t *testing.T) {
+	server, memStore, sessionManager := newTestServer(t)
+	server.settings.AllApprove = true
+	passwordHash := hashPasswordForTest(t, "password")
+	_, err := memStore.AddUser("regularuser", passwordHash, false, false, true, false, "local")
+	require.NoError(t, err)
+
+	computer, err := memStore.AddComputer("SERIAL_ALL_APPROVE", "user", "Mac")
+	require.NoError(t, err)
+	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	require.NoError(t, err)
+	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "", nil)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	req := newAuthenticatedRequest(t, sessionManager, http.MethodGet, "/approve/"+intToString(request.ID)+"/", nil, "regularuser")
+	serveProtected(server, rec, req, server.handleApprove)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+}

@@ -109,6 +109,11 @@ func TestSQLiteStoreAddSecret(t *testing.T) {
 
 	store := NewSQLiteStoreWithDB(db, testCodec(t))
 	now := time.Now()
+	// Expect the duplicate check query first (returns no rows = no duplicate)
+	mock.ExpectQuery(regexp.QuoteMeta(
+		"SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE computer_id = ? AND secret_type = ?",
+	)).WithArgs(1, "password").WillReturnRows(sqlmock.NewRows([]string{"id", "computer_id", "secret_type", "secret", "date_escrowed", "rotation_required"}))
+	// Then expect the insert
 	mock.ExpectQuery(regexp.QuoteMeta(
 		"INSERT INTO secrets (computer_id, secret_type, secret, date_escrowed, rotation_required) VALUES (?, ?, ?, ?, ?) RETURNING id, date_escrowed",
 	)).WithArgs(1, "password", sqlmock.AnyArg(), sqlmock.AnyArg(), false).WillReturnRows(sqlmock.NewRows([]string{"id", "date_escrowed"}).AddRow(5, now))

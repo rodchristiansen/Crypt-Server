@@ -51,7 +51,7 @@
         </tr>
         <tr>
           <th>Last Checked In</th>
-          <td>{{.Computer.LastCheckin}}</td>
+          <td>{{.Computer.LastCheckinFormatted}}</td>
         </tr>
       </tbody>
     </table>
@@ -72,8 +72,8 @@
       <tbody>
         {{range .Secrets}}
         <tr>
-          <td>{{.SecretType}}</td>
-          <td>{{.DateEscrowed}}</td>
+          <td>{{.SecretTypeDisplay}}</td>
+          <td>{{.DateEscrowedFormatted}}</td>
           <td>
             <a class="btn btn-info btn-xs" href="/info/secret/{{.ID}}/">Info / Request</a>
           </td>

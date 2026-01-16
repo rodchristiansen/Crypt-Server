@@ -68,7 +68,7 @@ All settings that would be entered into `settings.py` can also be passed into th
 
 - `EMAIL_SENDER` - The email address to send emaiil notifications from when secrets are requests and approved. Ensure this is verified if you are using SES. Does nothing unless `SEND_EMAIIL` is True.
 
-- `APPROVE_OWN` - By default, users with approval permissons can approve their own key requests. By setting this to False in settings.py (or by using the `APPROVE_OWN` environment variable with Docker), users cannot approve their own requests.
+- `APPROVE_OWN` - By default, users with approval permissions cannot approve their own key requests. Set this to `true` to allow users to approve their own requests.
 
 - `ALL_APPROVE` - By default, users need to be explicitly given approval permissions to approve key retrieval requests. By setting this to True in `settings.py`, all users are given this permission when they log in.
 

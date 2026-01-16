@@ -140,6 +140,19 @@ func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rot
 	if s.codec == nil {
 		return nil, ErrMissingCodec
 	}
+
+	// Check for duplicate secret (matching Django behavior)
+	// If the same secret value already exists for this computer/type and rotation is not required, skip insert
+	if !rotationRequired {
+		existing, err := s.findExistingSecret(computerID, secretType, secret)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil {
+			return existing, nil
+		}
+	}
+
 	encrypted, err := s.codec.Encrypt(secret)
 	if err != nil {
 		return nil, err
@@ -164,6 +177,33 @@ func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rot
 		DateEscrowed:     dateEscrowed,
 		RotationRequired: rotationRequired,
 	})
+}
+
+// findExistingSecret checks if the same secret value already exists for this computer/type
+func (s *PostgresStore) findExistingSecret(computerID int, secretType, plainSecret string) (*Secret, error) {
+	rows, err := s.db.Query(
+		`SELECT id, computer_id, secret_type, secret, date_escrowed, rotation_required FROM secrets WHERE computer_id = $1 AND secret_type = $2`,
+		computerID, secretType,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("find existing secret: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var secret Secret
+		if err := rows.Scan(&secret.ID, &secret.ComputerID, &secret.SecretType, &secret.Secret, &secret.DateEscrowed, &secret.RotationRequired); err != nil {
+			return nil, fmt.Errorf("scan secret: %w", err)
+		}
+		decrypted, err := s.decryptSecret(&secret)
+		if err != nil {
+			return nil, err
+		}
+		if decrypted.Secret == plainSecret {
+			return decrypted, nil
+		}
+	}
+	return nil, nil
 }
 
 func (s *PostgresStore) ListSecretsByComputer(computerID int) ([]*Secret, error) {

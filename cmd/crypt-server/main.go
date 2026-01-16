@@ -94,7 +94,7 @@ func main() {
 		logger.Fatalf("invalid session configuration: %v", err)
 	}
 	settings := app.Settings{
-		ApproveOwn:             envBool("APPROVE_OWN", true),
+		ApproveOwn:             envBool("APPROVE_OWN", false),
 		AllApprove:             envBool("ALL_APPROVE", false),
 		SessionTTL:             sessionTTL,
 		CookieSecure:           envBool("SESSION_COOKIE_SECURE", false),

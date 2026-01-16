@@ -76,8 +76,9 @@ func main() {
 		fmt.Fprintln(flag.CommandLine.Output(), "Usage: cryptctl <command>")
 		fmt.Fprintln(flag.CommandLine.Output(), "")
 		fmt.Fprintln(flag.CommandLine.Output(), "Commands:")
-		fmt.Fprintln(flag.CommandLine.Output(), "  gen-key         Generate a base64-encoded 32-byte FIELD_ENCRYPTION_KEY")
-		fmt.Fprintln(flag.CommandLine.Output(), "  import-fixture  Convert Django JSON fixtures into an encrypted migration export")
+		fmt.Fprintln(flag.CommandLine.Output(), "  gen-key           Generate a base64-encoded 32-byte FIELD_ENCRYPTION_KEY")
+		fmt.Fprintln(flag.CommandLine.Output(), "  import-fixture    Convert Django JSON fixtures into an encrypted migration export")
+		fmt.Fprintln(flag.CommandLine.Output(), "  integration-test  Run integration tests against a database")
 	}
 	flag.Parse()
 
@@ -94,6 +95,11 @@ func main() {
 		}
 	case "import-fixture":
 		if err := runImportFixture(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	case "integration-test":
+		if err := runIntegrationTest(os.Args[2:], os.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}

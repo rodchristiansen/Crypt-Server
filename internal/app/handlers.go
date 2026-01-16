@@ -22,9 +22,8 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := TemplateData{
-		Title:   "Crypt",
-		User:    s.currentUser(r),
-		Version: "0.0.0-dev",
+		Title: "Crypt",
+		User:  s.currentUser(r),
 	}
 	computers, err := s.store.ListComputers()
 	if err != nil {
@@ -464,7 +463,7 @@ func (s *Server) handleManageRequests(w http.ResponseWriter, r *http.Request) {
 			ComputerName:     computer.ComputerName,
 			RequestingUser:   req.RequestingUser,
 			ReasonForRequest: req.ReasonForRequest,
-			DateRequested:    req.DateRequested.Format("2006-01-02 15:04"),
+			DateRequested:    req.DateRequested.Format(store.DateTimeFormat),
 		})
 	}
 	data := TemplateData{Title: "Manage Requests", User: s.currentUser(r), ManageRequests: views}
@@ -1165,6 +1164,7 @@ func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name str
 	data.CSRFToken = s.csrfToken(w, r)
 	data.SAMLAvailable = s.samlSP != nil
 	data.SAMLLoginURL = s.samlLoginURL()
+	data.Version = Version
 	return s.renderer.Render(w, name, data)
 }
 
