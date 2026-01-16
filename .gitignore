@@ -12,7 +12,7 @@ keyset
 .vscode
 .gocache/*
 
-cryptctl
-crypt-server
+/cryptctl
+/crypt-server
 
 .claude/settings.local.json
