@@ -21,8 +21,12 @@ If you intend on using the server for anything semi-serious it is a good idea to
 Export your Django database to a JSON fixture:
 
 ```bash
+# If running Django directly:
 cd /path/to/legacy/crypt-server
 ./manage.py dumpdata > legacy.json
+
+# If running Django in Docker:
+docker exec <container_name> python manage.py dumpdata > legacy.json
 ```
 
 ### Step 2: Generate a new encryption key
@@ -46,7 +50,7 @@ Convert the Django JSON fixture into the new format. This re-encrypts all secret
   -password-map password-map.csv
 ```
 
-The optional password map CSV allows you to set passwords for users who should have local login enabled:
+The optional password map CSV allows you to set passwords for users who should have local login enabled. Amy users not in this map will be configured for SAML authentication only. The CSV should have the following format (including header row):
 
 ```csv
 username_or_email,password,must_reset_password
@@ -64,15 +68,18 @@ Import the converted fixture into the Go server. **The database must be empty** 
 ```
 
 The import will:
+
 - Verify the database is empty (fails if any data exists)
 - Import all computers with their original IDs
 - Import all secrets (already re-encrypted with the new key)
 - Import all users with their authentication settings
 - Import all requests with their approval status
 
-After import, you can start the server normally:
+After import, start the server with the required environment variables:
 
 ```bash
+export FIELD_ENCRYPTION_KEY=$(cat new-field-encryption-key.txt)
+export SESSION_KEY=$(openssl rand -base64 32)
 ./crypt-server
 ```
 
@@ -92,7 +99,7 @@ All settings are configured via environment variables.
 
 - `FIELD_ENCRYPTION_KEY` - Base64-encoded 32-byte key for encrypting secrets. Generate with `./cryptctl gen-key`.
 
-- `SESSION_KEY` - A random string (at least 32 bytes) used to sign session cookies.
+- `SESSION_KEY` - A random string (at least 32 bytes) used to sign session cookies. Generate with `openssl rand -base64 32`.
 
 ### Database (one required)
 
@@ -126,7 +133,7 @@ Flags:
 
 Example:
 
-```
+``` bash
 ./crypt-server -validate-migrations -migrations-driver=postgres
 ```
 
@@ -134,7 +141,7 @@ Example:
 
 Create the initial admin user (only works when no users exist yet):
 
-```
+``` bash
 ./crypt-server -create-admin -admin-username=admin -admin-password='your-password'
 ```
 

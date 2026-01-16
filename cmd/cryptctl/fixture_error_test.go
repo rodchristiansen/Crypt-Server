@@ -12,7 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConvertFixtureBadSecret(t *testing.T) {
+func TestConvertFixturePlaintextSecretFallback(t *testing.T) {
+	// Test that non-Fernet secrets are treated as plaintext (fallback behavior)
+	// This supports Django databases that didn't have field encryption enabled
 	legacyKey := fernet.Key{}
 	require.NoError(t, legacyKey.Generate())
 	legacyDecoded := fernet.MustDecodeKeys(string(legacyKey.Encode()))
@@ -21,11 +23,16 @@ func TestConvertFixtureBadSecret(t *testing.T) {
 	require.NoError(t, err)
 
 	entries := []fixtureEntry{
-		{Model: "server.secret", PK: 20, Fields: map[string]interface{}{"computer": 10, "secret_type": "recovery_key", "secret": "not-a-token"}},
+		{Model: "server.secret", PK: 20, Fields: map[string]interface{}{"computer": 10, "secret_type": "recovery_key", "secret": "plaintext-recovery-key"}},
 	}
 
-	_, err = convertFixture(entries, legacyDecoded[0], codec, map[string]passwordMapEntry{})
-	require.Error(t, err)
+	output, err := convertFixture(entries, legacyDecoded[0], codec, map[string]passwordMapEntry{})
+	require.NoError(t, err)
+	require.Len(t, output.Secrets, 1)
+	// Verify the plaintext was encrypted with the new codec
+	decrypted, err := codec.Decrypt(output.Secrets[0].Secret)
+	require.NoError(t, err)
+	require.Equal(t, "plaintext-recovery-key", decrypted)
 }
 
 func TestConvertFixtureMissingSecret(t *testing.T) {

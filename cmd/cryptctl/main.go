@@ -16,8 +16,20 @@ import (
 
 type fixtureEntry struct {
 	Model  string                 `json:"model"`
-	PK     int                    `json:"pk"`
+	PK     interface{}            `json:"pk"`
 	Fields map[string]interface{} `json:"fields"`
+}
+
+// pkInt returns the integer PK value, or 0 if not an int/float (e.g., string session keys).
+func (e fixtureEntry) pkInt() int {
+	switch v := e.PK.(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	default:
+		return 0
+	}
 }
 
 type migrationOutput struct {

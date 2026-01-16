@@ -34,25 +34,26 @@ func convertFixture(entries []fixtureEntry, legacyKey *fernet.Key, newCodec *cry
 	requests := make([]requestOut, 0)
 
 	for _, entry := range entries {
+		pk := entry.pkInt()
 		switch entry.Model {
 		case "auth.user":
 			username := getString(entry.Fields, "username")
 			user := userOut{
-				ID:       entry.PK,
+				ID:       pk,
 				Username: username,
 				Email:    getString(entry.Fields, "email"),
 				IsStaff:  getBool(entry.Fields, "is_staff"),
 				IsSuper:  getBool(entry.Fields, "is_superuser"),
 				Groups:   []string{},
 			}
-			users[entry.PK] = user
-			usernames[entry.PK] = username
-			emails[entry.PK] = strings.ToLower(getString(entry.Fields, "email"))
+			users[pk] = user
+			usernames[pk] = username
+			emails[pk] = strings.ToLower(getString(entry.Fields, "email"))
 		case "auth.group":
-			groups[entry.PK] = getString(entry.Fields, "name")
+			groups[pk] = getString(entry.Fields, "name")
 		case "auth.permission":
 			if getString(entry.Fields, "codename") == "can_approve" {
-				permissionIDs[entry.PK] = struct{}{}
+				permissionIDs[pk] = struct{}{}
 			}
 		case "auth.user_user_permissions":
 			userID := getInt(entry.Fields, "user")
@@ -70,10 +71,11 @@ func convertFixture(entries []fixtureEntry, legacyKey *fernet.Key, newCodec *cry
 	}
 
 	for _, entry := range entries {
+		pk := entry.pkInt()
 		switch entry.Model {
 		case "server.computer":
 			computers = append(computers, computerOut{
-				ID:           entry.PK,
+				ID:           pk,
 				Serial:       getString(entry.Fields, "serial"),
 				Username:     getString(entry.Fields, "username"),
 				ComputerName: getString(entry.Fields, "computername"),
@@ -83,14 +85,14 @@ func convertFixture(entries []fixtureEntry, legacyKey *fernet.Key, newCodec *cry
 			ciphertext := getString(entry.Fields, "secret")
 			plaintext, err := decryptLegacySecret(ciphertext, legacyKey)
 			if err != nil {
-				return nil, fmt.Errorf("decrypt secret %d: %w", entry.PK, err)
+				return nil, fmt.Errorf("decrypt secret %d: %w", pk, err)
 			}
 			encrypted, err := newCodec.Encrypt(plaintext)
 			if err != nil {
-				return nil, fmt.Errorf("encrypt secret %d: %w", entry.PK, err)
+				return nil, fmt.Errorf("encrypt secret %d: %w", pk, err)
 			}
 			secrets = append(secrets, secretOut{
-				ID:               entry.PK,
+				ID:               pk,
 				ComputerID:       getInt(entry.Fields, "computer"),
 				SecretType:       getString(entry.Fields, "secret_type"),
 				Secret:           encrypted,
@@ -101,7 +103,7 @@ func convertFixture(entries []fixtureEntry, legacyKey *fernet.Key, newCodec *cry
 			requestingUser := usernameForID(usernames, getOptionalInt(entry.Fields, "requesting_user"))
 			authUser := usernameForID(usernames, getOptionalInt(entry.Fields, "auth_user"))
 			requests = append(requests, requestOut{
-				ID:                entry.PK,
+				ID:                pk,
 				SecretID:          getInt(entry.Fields, "secret"),
 				RequestingUser:    requestingUser,
 				Approved:          getOptionalBool(entry.Fields, "approved"),
@@ -199,11 +201,14 @@ func decryptLegacySecret(value string, key *fernet.Key) (string, error) {
 	if value == "" {
 		return "", errors.New("empty secret")
 	}
+	// Try Fernet decryption first (for encrypted Django databases)
 	plaintext := fernet.VerifyAndDecrypt([]byte(value), 0*time.Second, []*fernet.Key{key})
-	if plaintext == nil {
-		return "", errors.New("invalid legacy token")
+	if plaintext != nil {
+		return string(plaintext), nil
 	}
-	return string(plaintext), nil
+	// Fallback: if Fernet decryption fails, assume the secret is plaintext
+	// (some Django installations may not have field encryption enabled)
+	return value, nil
 }
 
 func marshalOutput(output *migrationOutput) ([]byte, error) {
