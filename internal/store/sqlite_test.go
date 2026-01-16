@@ -118,9 +118,10 @@ func TestSQLiteStoreAddSecret(t *testing.T) {
 		"INSERT INTO secrets (computer_id, secret_type, secret, date_escrowed, rotation_required) VALUES (?, ?, ?, ?, ?) RETURNING id, date_escrowed",
 	)).WithArgs(1, "password", sqlmock.AnyArg(), sqlmock.AnyArg(), false).WillReturnRows(sqlmock.NewRows([]string{"id", "date_escrowed"}).AddRow(5, now))
 
-	secret, err := store.AddSecret(1, "password", "secret", false)
+	secret, isNew, err := store.AddSecret(1, "password", "secret", false)
 	require.NoError(t, err)
 	require.Equal(t, 5, secret.ID)
+	require.True(t, isNew)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

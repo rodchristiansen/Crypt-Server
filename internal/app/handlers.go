@@ -170,7 +170,7 @@ func (s *Server) handleNewSecret(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if _, err := s.store.AddSecret(computer.ID, secretType, secret, rotationRequired); err != nil {
+		if _, _, err := s.store.AddSecret(computer.ID, secretType, secret, rotationRequired); err != nil {
 			s.renderError(w, err)
 			return
 		}
@@ -1082,26 +1082,17 @@ func (s *Server) handleCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.store.AddSecret(computer.ID, secretType, recoveryPass, false)
+	secret, newSecretEscrowed, err := s.store.AddSecret(computer.ID, secretType, recoveryPass, false)
 	if err != nil {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
-	latest, err := s.store.GetLatestSecretByComputerAndType(computer.ID, secretType)
-	if err != nil && err != store.ErrNotFound {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	rotationRequired := false
-	if latest != nil {
-		rotationRequired = latest.RotationRequired
-	}
-
 	payload := map[string]any{
-		"serial":            computer.Serial,
-		"username":          computer.Username,
-		"rotation_required": rotationRequired,
+		"serial":              computer.Serial,
+		"username":            computer.Username,
+		"rotation_required":   secret.RotationRequired,
+		"new_secret_escrowed": newSecretEscrowed,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(payload); err != nil {

@@ -136,9 +136,9 @@ func (s *PostgresStore) GetComputerBySerial(serial string) (*Computer, error) {
 	return &computer, nil
 }
 
-func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*Secret, error) {
+func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*Secret, bool, error) {
 	if s.codec == nil {
-		return nil, ErrMissingCodec
+		return nil, false, ErrMissingCodec
 	}
 
 	// Check for duplicate secret (matching Django behavior)
@@ -146,16 +146,16 @@ func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rot
 	if !rotationRequired {
 		existing, err := s.findExistingSecret(computerID, secretType, secret)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if existing != nil {
-			return existing, nil
+			return existing, false, nil
 		}
 	}
 
 	encrypted, err := s.codec.Encrypt(secret)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var id int
 	var dateEscrowed time.Time
@@ -166,10 +166,10 @@ func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rot
 		computerID, secretType, encrypted, rotationRequired,
 	)
 	if err := row.Scan(&id, &dateEscrowed); err != nil {
-		return nil, fmt.Errorf("insert secret: %w", err)
+		return nil, false, fmt.Errorf("insert secret: %w", err)
 	}
 
-	return s.decryptSecret(&Secret{
+	decrypted, err := s.decryptSecret(&Secret{
 		ID:               id,
 		ComputerID:       computerID,
 		SecretType:       secretType,
@@ -177,6 +177,10 @@ func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rot
 		DateEscrowed:     dateEscrowed,
 		RotationRequired: rotationRequired,
 	})
+	if err != nil {
+		return nil, false, err
+	}
+	return decrypted, true, nil
 }
 
 // findExistingSecret checks if the same secret value already exists for this computer/type
@@ -747,4 +751,73 @@ func nullableString(value string) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: value, Valid: true}
+}
+
+func (s *PostgresStore) IsEmpty() (bool, error) {
+	tables := []string{"computers", "secrets", "requests", "users"}
+	for _, table := range tables {
+		var count int
+		query := fmt.Sprintf("SELECT COUNT(*) FROM %s", table)
+		if err := s.db.QueryRow(query).Scan(&count); err != nil {
+			return false, fmt.Errorf("count %s: %w", table, err)
+		}
+		if count > 0 {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (s *PostgresStore) ImportComputer(id int, serial, username, computerName string, lastCheckin time.Time) error {
+	_, err := s.db.Exec(
+		`INSERT INTO computers (id, serial, username, computername, last_checkin) VALUES ($1, $2, $3, $4, $5)`,
+		id, serial, username, computerName, lastCheckin,
+	)
+	if err != nil {
+		return fmt.Errorf("import computer: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) ImportSecret(id, computerID int, secretType, encryptedSecret string, dateEscrowed time.Time, rotationRequired bool) error {
+	_, err := s.db.Exec(
+		`INSERT INTO secrets (id, computer_id, secret_type, secret, date_escrowed, rotation_required) VALUES ($1, $2, $3, $4, $5, $6)`,
+		id, computerID, secretType, encryptedSecret, dateEscrowed, rotationRequired,
+	)
+	if err != nil {
+		return fmt.Errorf("import secret: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) ImportRequest(id, secretID int, requestingUser string, approved *bool, authUser, reasonForRequest, reasonForApproval string, dateRequested time.Time, dateApproved *time.Time, current bool) error {
+	var approvedValue sql.NullBool
+	if approved != nil {
+		approvedValue.Valid = true
+		approvedValue.Bool = *approved
+	}
+	var dateApprovedValue sql.NullTime
+	if dateApproved != nil {
+		dateApprovedValue.Valid = true
+		dateApprovedValue.Time = *dateApproved
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO requests (id, secret_id, requesting_user, approved, auth_user, reason_for_request, reason_for_approval, date_requested, date_approved, current) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		id, secretID, requestingUser, approvedValue, nullableString(authUser), reasonForRequest, nullableString(reasonForApproval), dateRequested, dateApprovedValue, current,
+	)
+	if err != nil {
+		return fmt.Errorf("import request: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStore) ImportUser(id int, username, passwordHash string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO users (id, username, password_hash, is_staff, can_approve, local_login_enabled, must_reset_password, auth_source) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		id, username, nullableString(passwordHash), isStaff, canApprove, localLoginEnabled, mustResetPassword, authSource,
+	)
+	if err != nil {
+		return fmt.Errorf("import user: %w", err)
+	}
+	return nil
 }

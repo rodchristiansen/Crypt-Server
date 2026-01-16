@@ -22,6 +22,7 @@ func main() {
 	createAdmin := flag.Bool("create-admin", false, "Create the first admin user and exit")
 	adminUsername := flag.String("admin-username", "", "Username for the first admin user")
 	adminPassword := flag.String("admin-password", "", "Password for the first admin user")
+	importFixturePath := flag.String("import-fixture", "", "Path to fixture JSON file to import (database must be empty)")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "crypt-server ", log.LstdFlags)
@@ -81,6 +82,15 @@ func main() {
 			logger.Fatalf("create admin failed: %v", err)
 		}
 		logger.Printf("created first admin user: %s", *adminUsername)
+		return
+	}
+
+	if *importFixturePath != "" {
+		logger.Printf("importing fixture from %s", *importFixturePath)
+		if err := importFixture(dataStore, *importFixturePath); err != nil {
+			logger.Fatalf("import fixture failed: %v", err)
+		}
+		logger.Printf("fixture imported successfully")
 		return
 	}
 	renderer := app.NewRenderer("web/templates/layouts/base.html", "web/templates/pages")

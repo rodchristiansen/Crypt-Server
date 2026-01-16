@@ -131,8 +131,8 @@ func (s *auditPaginationStore) GetComputerBySerial(serial string) (*store.Comput
 	return nil, store.ErrNotFound
 }
 
-func (s *auditPaginationStore) AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*store.Secret, error) {
-	return nil, store.ErrNotFound
+func (s *auditPaginationStore) AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*store.Secret, bool, error) {
+	return nil, false, store.ErrNotFound
 }
 
 func (s *auditPaginationStore) ListSecretsByComputer(computerID int) ([]*store.Secret, error) {
@@ -203,6 +203,26 @@ func (s *auditPaginationStore) SetSecretRotationRequired(secretID int, rotationR
 	return nil, store.ErrNotFound
 }
 
+func (s *auditPaginationStore) IsEmpty() (bool, error) {
+	return true, nil
+}
+
+func (s *auditPaginationStore) ImportComputer(id int, serial, username, computerName string, lastCheckin time.Time) error {
+	return nil
+}
+
+func (s *auditPaginationStore) ImportSecret(id, computerID int, secretType, encryptedSecret string, dateEscrowed time.Time, rotationRequired bool) error {
+	return nil
+}
+
+func (s *auditPaginationStore) ImportRequest(id, secretID int, requestingUser string, approved *bool, authUser, reasonForRequest, reasonForApproval string, dateRequested time.Time, dateApproved *time.Time, current bool) error {
+	return nil
+}
+
+func (s *auditPaginationStore) ImportUser(id int, username, passwordHash string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) error {
+	return nil
+}
+
 func TestHandleIndex(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	_, err := memStore.AddComputer("SERIAL1", "user", "Mac")
@@ -256,7 +276,7 @@ func TestRequestApproveRetrieveFlow(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	computer, err := memStore.AddComputer("SERIAL4", "user4", "MacBook Pro")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret-value", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret-value", false)
 	require.NoError(t, err)
 
 	form := url.Values{}
@@ -295,7 +315,7 @@ func TestRetrieveMarksRotationRequired(t *testing.T) {
 	require.True(t, server.settings.RotateViewedSecrets)
 	computer, err := dataStore.AddComputer("SERIALROTATE", "user", "MacBook Pro")
 	require.NoError(t, err)
-	secret, err := dataStore.AddSecret(computer.ID, "recovery_key", "secret-value", false)
+	secret, _, err := dataStore.AddSecret(computer.ID, "recovery_key", "secret-value", false)
 	require.NoError(t, err)
 	initial, err := dataStore.GetSecretByID(secret.ID)
 	require.NoError(t, err)
@@ -324,7 +344,7 @@ func TestHandleManageRequests(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	computer, err := memStore.AddComputer("SERIAL5", "user5", "Mac Mini")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "password", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "password", "secret", false)
 	require.NoError(t, err)
 	_, err = memStore.AddRequest(secret.ID, "user5", "Need access", "", nil)
 	require.NoError(t, err)
@@ -479,6 +499,7 @@ func TestCheckinCreatesSecret(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), "\"serial\":\"SERIALCHECKIN\"")
 	require.Contains(t, rec.Body.String(), "\"rotation_required\":false")
+	require.Contains(t, rec.Body.String(), "\"new_secret_escrowed\":true")
 
 	computer, err := memStore.GetComputerBySerial("SERIALCHECKIN")
 	require.NoError(t, err)
@@ -489,7 +510,7 @@ func TestVerifyEscrowed(t *testing.T) {
 	server, memStore, _ := newTestServer(t)
 	computer, err := memStore.AddComputer("SERIALVERIFY", "user", "Mac")
 	require.NoError(t, err)
-	_, err = memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	_, _, err = memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -921,7 +942,7 @@ func TestHandleComputerInfo(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	computer, err := memStore.AddComputer("SERIAL_INFO", "testuser", "MacBook Air")
 	require.NoError(t, err)
-	_, err = memStore.AddSecret(computer.ID, "recovery_key", "test-secret", false)
+	_, _, err = memStore.AddSecret(computer.ID, "recovery_key", "test-secret", false)
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -961,7 +982,7 @@ func TestHandleSecretInfo(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	computer, err := memStore.AddComputer("SERIAL_SECRET_INFO", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "password", "secret-pass", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "password", "secret-pass", false)
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -982,7 +1003,7 @@ func TestHandleSecretInfoWithPendingRequestNonApprover(t *testing.T) {
 
 	computer, err := memStore.AddComputer("SERIAL_PENDING", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 	_, err = memStore.AddRequest(secret.ID, "viewer", "Need access", "", nil)
 	require.NoError(t, err)
@@ -1000,7 +1021,7 @@ func TestHandleRequestGET(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	computer, err := memStore.AddComputer("SERIAL_REQUEST_GET", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 
 	rec := httptest.NewRecorder()
@@ -1017,7 +1038,7 @@ func TestHandleRequestPOSTWithoutAutoApprove(t *testing.T) {
 	server.settings.ApproveOwn = false
 	computer, err := memStore.AddComputer("SERIAL_NO_AUTO", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 
 	form := url.Values{}
@@ -1038,7 +1059,7 @@ func TestHandleApproveGET(t *testing.T) {
 	server.settings.ApproveOwn = false
 	computer, err := memStore.AddComputer("SERIAL_APPROVE_GET", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 	request, err := memStore.AddRequest(secret.ID, "requester", "Need access", "", nil)
 	require.NoError(t, err)
@@ -1058,7 +1079,7 @@ func TestHandleApprovePOSTApprove(t *testing.T) {
 	server.settings.ApproveOwn = false
 	computer, err := memStore.AddComputer("SERIAL_APPROVE", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 	request, err := memStore.AddRequest(secret.ID, "requester", "Need access", "", nil)
 	require.NoError(t, err)
@@ -1086,7 +1107,7 @@ func TestHandleApprovePOSTDeny(t *testing.T) {
 	server.settings.ApproveOwn = false
 	computer, err := memStore.AddComputer("SERIAL_DENY", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 	request, err := memStore.AddRequest(secret.ID, "requester", "Need access", "", nil)
 	require.NoError(t, err)
@@ -1114,7 +1135,7 @@ func TestHandleApproveWithoutPermission(t *testing.T) {
 
 	computer, err := memStore.AddComputer("SERIAL_NO_PERM", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "", nil)
 	require.NoError(t, err)
@@ -1132,7 +1153,7 @@ func TestHandleApproveSelfRequestWhenNotAllowed(t *testing.T) {
 
 	computer, err := memStore.AddComputer("SERIAL_SELF", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "", nil)
 	require.NoError(t, err)
@@ -1169,7 +1190,7 @@ func TestHandleRetrieveUnapprovedRequest(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	computer, err := memStore.AddComputer("SERIAL_UNAPPROVED", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "", nil)
 	require.NoError(t, err)
@@ -1185,7 +1206,7 @@ func TestHandleRetrieveDeniedRequest(t *testing.T) {
 	server, memStore, sessionManager := newTestServer(t)
 	computer, err := memStore.AddComputer("SERIAL_DENIED", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 	approved := false
 	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "approver", &approved)
@@ -1206,7 +1227,7 @@ func TestHandleRetrieveWrongUser(t *testing.T) {
 
 	computer, err := memStore.AddComputer("SERIAL_WRONG_USER", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 	approved := true
 	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "approver", &approved)
@@ -1317,7 +1338,7 @@ func TestAllApproveSettingGrantsApprovalPermission(t *testing.T) {
 
 	computer, err := memStore.AddComputer("SERIAL_ALL_APPROVE", "user", "Mac")
 	require.NoError(t, err)
-	secret, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
+	secret, _, err := memStore.AddSecret(computer.ID, "recovery_key", "secret", false)
 	require.NoError(t, err)
 	request, err := memStore.AddRequest(secret.ID, "admin", "Need access", "", nil)
 	require.NoError(t, err)
@@ -1327,4 +1348,114 @@ func TestAllApproveSettingGrantsApprovalPermission(t *testing.T) {
 	serveProtected(server, rec, req, server.handleApprove)
 
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestCheckinNewSecretEscrowedFirstTime(t *testing.T) {
+	server, memStore, _ := newTestServer(t)
+
+	form := url.Values{}
+	form.Set("serial", "SERIAL_NEW_SECRET")
+	form.Set("recovery_password", "first-secret-value")
+	form.Set("username", "user1")
+	form.Set("macname", "MacBook")
+	form.Set("secret_type", "recovery_key")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/checkin/", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	server.handleCheckin(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var data map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &data))
+	require.Equal(t, "SERIAL_NEW_SECRET", data["serial"])
+	require.Equal(t, true, data["new_secret_escrowed"])
+
+	computer, err := memStore.GetComputerBySerial("SERIAL_NEW_SECRET")
+	require.NoError(t, err)
+	secrets, err := memStore.ListSecretsByComputer(computer.ID)
+	require.NoError(t, err)
+	require.Len(t, secrets, 1)
+}
+
+func TestCheckinNewSecretEscrowedDuplicate(t *testing.T) {
+	server, memStore, _ := newTestServer(t)
+
+	// First escrow
+	form := url.Values{}
+	form.Set("serial", "SERIAL_DUPLICATE")
+	form.Set("recovery_password", "same-secret-value")
+	form.Set("username", "user1")
+	form.Set("macname", "MacBook")
+	form.Set("secret_type", "recovery_key")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/checkin/", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	server.handleCheckin(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var firstData map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &firstData))
+	require.Equal(t, true, firstData["new_secret_escrowed"])
+
+	// Second escrow with same secret
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "/checkin/", strings.NewReader(form.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	server.handleCheckin(rec2, req2)
+	require.Equal(t, http.StatusOK, rec2.Code)
+
+	var secondData map[string]any
+	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &secondData))
+	require.Equal(t, false, secondData["new_secret_escrowed"])
+
+	// Verify only one secret was created
+	computer, err := memStore.GetComputerBySerial("SERIAL_DUPLICATE")
+	require.NoError(t, err)
+	secrets, err := memStore.ListSecretsByComputer(computer.ID)
+	require.NoError(t, err)
+	require.Len(t, secrets, 1)
+}
+
+func TestCheckinNewSecretEscrowedDifferentKey(t *testing.T) {
+	server, memStore, _ := newTestServer(t)
+
+	// First escrow
+	form := url.Values{}
+	form.Set("serial", "SERIAL_DIFF_KEY")
+	form.Set("recovery_password", "first-secret")
+	form.Set("username", "user1")
+	form.Set("macname", "MacBook")
+	form.Set("secret_type", "recovery_key")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/checkin/", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	server.handleCheckin(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var firstData map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &firstData))
+	require.Equal(t, true, firstData["new_secret_escrowed"])
+
+	// Second escrow with different secret value
+	form.Set("recovery_password", "second-different-secret")
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodPost, "/checkin/", strings.NewReader(form.Encode()))
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	server.handleCheckin(rec2, req2)
+	require.Equal(t, http.StatusOK, rec2.Code)
+
+	var secondData map[string]any
+	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &secondData))
+	require.Equal(t, true, secondData["new_secret_escrowed"])
+
+	// Verify two secrets were created
+	computer, err := memStore.GetComputerBySerial("SERIAL_DIFF_KEY")
+	require.NoError(t, err)
+	secrets, err := memStore.ListSecretsByComputer(computer.ID)
+	require.NoError(t, err)
+	require.Len(t, secrets, 2)
 }

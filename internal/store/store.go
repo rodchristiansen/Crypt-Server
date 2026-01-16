@@ -19,7 +19,9 @@ type Store interface {
 	ListComputers() ([]*Computer, error)
 	GetComputerByID(id int) (*Computer, error)
 	GetComputerBySerial(serial string) (*Computer, error)
-	AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*Secret, error)
+	// AddSecret adds a new secret. Returns the secret, a bool indicating if it was newly created
+	// (false if the same secret value already exists), and any error.
+	AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*Secret, bool, error)
 	ListSecretsByComputer(computerID int) ([]*Secret, error)
 	GetSecretByID(id int) (*Secret, error)
 	GetLatestSecretByComputerAndType(computerID int, secretType string) (*Secret, error)
@@ -44,4 +46,15 @@ type Store interface {
 	SearchAuditEventsPaged(query string, limit, offset int) ([]*AuditEvent, error)
 	CountAuditEvents() (int, error)
 	CountSearchAuditEvents(query string) (int, error)
+	// IsEmpty returns true if all data tables are empty (no rows).
+	// This is used to check if it's safe to import fixture data.
+	IsEmpty() (bool, error)
+	// ImportComputer inserts a computer with a specific ID.
+	ImportComputer(id int, serial, username, computerName string, lastCheckin time.Time) error
+	// ImportSecret inserts a secret with a specific ID. The secret is already encrypted.
+	ImportSecret(id, computerID int, secretType, encryptedSecret string, dateEscrowed time.Time, rotationRequired bool) error
+	// ImportRequest inserts a request with a specific ID.
+	ImportRequest(id, secretID int, requestingUser string, approved *bool, authUser, reasonForRequest, reasonForApproval string, dateRequested time.Time, dateApproved *time.Time, current bool) error
+	// ImportUser inserts a user with a specific ID.
+	ImportUser(id int, username, passwordHash string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) error
 }

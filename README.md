@@ -1,8 +1,8 @@
 # Crypt-Server
 
-**[Crypt][1]** is a tool for securely storing secrets such as FileVault 2 recovery keys. It is made up of a client app, and a Django web app for storing the keys.
+**[Crypt][1]** is a tool for securely storing secrets such as FileVault 2 recovery keys. It is made up of a client app, and a web app for storing the keys.
 
-This Docker image contains the fully configured Crypt Django web app. A default admin user has been preconfigured, use admin/password to login.
+This Docker image contains the fully configured Crypt web app. A default admin user has been preconfigured, use admin/password to login.
 If you intend on using the server for anything semi-serious it is a good idea to change the password or add a new admin user and delete the default one.
 
 ## Features
@@ -14,30 +14,66 @@ If you intend on using the server for anything semi-serious it is a good idea to
 
   [1]: https://github.com/grahamgilbert/Crypt
 
-## Migration helper
+## Migration from Django
 
-The new migration helper can generate an encryption key for the Go backend:
+### Step 1: Export data from Django
 
-```
-go run ./cmd/cryptctl gen-key
-```
+Export your Django database to a JSON fixture:
 
-Convert a Django JSON fixture (from `manage.py dumpdata`) into an encrypted export file:
-
-```
-go run ./cmd/cryptctl import-fixture \
-  --input legacy.json \
-  --output migration-export.json \
-  --legacy-key-file legacy-field-encryption-key.txt \
-  --new-key-file new-field-encryption-key.txt \
-  --password-map password-map.csv
+```bash
+cd /path/to/legacy/crypt-server
+./manage.py dumpdata > legacy.json
 ```
 
-Optional password map CSV format:
+### Step 2: Generate a new encryption key
 
+Generate a new AES-GCM encryption key for the Go backend:
+
+```bash
+./cryptctl gen-key > new-field-encryption-key.txt
 ```
+
+### Step 3: Convert the fixture
+
+Convert the Django JSON fixture into the new format. This re-encrypts all secrets from Django's Fernet encryption to the new AES-GCM format:
+
+```bash
+./cryptctl import-fixture \
+  -input legacy.json \
+  -output migration-export.json \
+  -legacy-key-file legacy-field-encryption-key.txt \
+  -new-key-file new-field-encryption-key.txt \
+  -password-map password-map.csv
+```
+
+The optional password map CSV allows you to set passwords for users who should have local login enabled:
+
+```csv
 username_or_email,password,must_reset_password
 admin@example.com,Str0ng!Passw0rd,false
+```
+
+Users not in the password map will be configured for SAML authentication only.
+
+### Step 4: Import into the new server
+
+Import the converted fixture into the Go server. **The database must be empty** (no existing computers, secrets, requests, or users):
+
+```bash
+./crypt-server -import-fixture migration-export.json
+```
+
+The import will:
+- Verify the database is empty (fails if any data exists)
+- Import all computers with their original IDs
+- Import all secrets (already re-encrypted with the new key)
+- Import all users with their authentication settings
+- Import all requests with their approval status
+
+After import, you can start the server normally:
+
+```bash
+./crypt-server
 ```
 
 ## Installation instructions
@@ -50,33 +86,31 @@ Crypt 3 changed it's encryption backend, so when migrating from versions earlier
 
 ## Settings
 
-All settings that would be entered into `settings.py` can also be passed into the Docker container as environment variables.
+All settings are configured via environment variables.
 
-- `FIELD_ENCRYPTION_KEY` - The key to use when encrypting the secrets. This is required.
+### Required
 
-- `SESSION_KEY` - A random string (at least 32 bytes) used to sign session cookies. This is required.
+- `FIELD_ENCRYPTION_KEY` - Base64-encoded 32-byte key for encrypting secrets. Generate with `./cryptctl gen-key`.
 
-- `DATABASE_URL` - Postgres connection string. Mutually exclusive with `SQLITE_PATH`.
+- `SESSION_KEY` - A random string (at least 32 bytes) used to sign session cookies.
 
-- `SQLITE_PATH` - SQLite database file path. Must be a file path. Mutually exclusive with `DATABASE_URL`.
+### Database (one required)
 
-- `SESSION_COOKIE_SECURE` - Set to `true` to mark session cookies as secure (recommended when using HTTPS).
+- `DATABASE_URL` - PostgreSQL connection string (e.g., `postgres://user:pass@host:5432/dbname`). Mutually exclusive with `SQLITE_PATH`.
+
+- `SQLITE_PATH` - SQLite database file path. Must be a file path (not `:memory:`). Mutually exclusive with `DATABASE_URL`.
+
+### Optional
+
+- `SESSION_COOKIE_SECURE` - Set to `true` to mark session cookies as secure (recommended when using HTTPS). Default: `false`.
 
 - `SAML_CONFIG_FILE` - Path to a YAML file containing SAML configuration. See `docs/saml-config.sample.yaml` for all supported fields.
 
-- `SEND_EMAIL` - Crypt Server can send email notifcations when secrets are requested and approved. Set `SEND_EMAIL` to True, and set `HOST_NAME` to your server's host and URL scheme (e.g. `https://crypt.example.com`). For configuring your email settings, see the [Django documentation](https://docs.djangoproject.com/en/3.1/ref/settings/#std:setting-EMAIL_HOST).
+- `APPROVE_OWN` - Allow users with approval permissions to approve their own key requests. Default: `false`.
 
-- `EMAIL_SENDER` - The email address to send emaiil notifications from when secrets are requests and approved. Ensure this is verified if you are using SES. Does nothing unless `SEND_EMAIIL` is True.
+- `ALL_APPROVE` - Grant all users approval permissions when they log in. Default: `false`.
 
-- `APPROVE_OWN` - By default, users with approval permissions cannot approve their own key requests. Set this to `true` to allow users to approve their own requests.
-
-- `ALL_APPROVE` - By default, users need to be explicitly given approval permissions to approve key retrieval requests. By setting this to True in `settings.py`, all users are given this permission when they log in.
-
-- `ROTATE_VIEWED_SECRETS` - With a compatible client (such as Crypt 3.2.0 and greater), Crypt Server can instruct the client to rotate the secret and re-escrow it when the secret has been viewed. Enable by setting this to `True` or by using `ROTATE_VIEWED_SECRETS` and setting to `true`.
-
-- `HOST_NAME` - Set the host name of your instance - required if you do not have control over the load balancer or proxy in front of your Crypt server (see [the Django documentation](https://docs.djangoproject.com/en/4.1/ref/settings/#csrf-trusted-origins)).
-
-- `CSRF_TRUSTED_ORIGINS` - Is a list of trusted origins expected to make requests to your Crypt instance, normally this is the hostname
+- `ROTATE_VIEWED_SECRETS` - Instruct compatible clients (Crypt 3.2.0+) to rotate and re-escrow secrets after viewing. Default: `false`.
 
 ## Database migrations
 
@@ -103,6 +137,7 @@ Create the initial admin user (only works when no users exist yet):
 ```
 ./crypt-server -create-admin -admin-username=admin -admin-password='your-password'
 ```
+
 ## Screenshots
 
 Main Page:
