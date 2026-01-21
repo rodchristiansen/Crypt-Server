@@ -184,3 +184,43 @@ LOGGING = {
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
+
+# SAML SSO Configuration (optional)
+# Enable by setting SAML_ENABLED=true in environment
+SAML_ENABLED = os.environ.get("SAML_ENABLED", "false").lower() == "true"
+
+if SAML_ENABLED:
+    # Import SAML configuration
+    from fvserver.saml_settings import (
+        SAML_CONFIG,
+        SAML_ATTRIBUTE_MAPPING,
+        SAML_CREATE_UNKNOWN_USER,
+        SAML_DJANGO_USER_MAIN_ATTRIBUTE,
+        SAML_USE_NAME_ID_AS_USERNAME,
+        SAML_DJANGO_USER_MAIN_ATTRIBUTE_LOOKUP,
+        SESSION_EXPIRE_AT_BROWSER_CLOSE,
+    )
+    
+    # Add djangosaml2 to installed apps
+    INSTALLED_APPS = INSTALLED_APPS + ("djangosaml2",)
+    
+    # Add SAML session middleware
+    MIDDLEWARE.append("djangosaml2.middleware.SamlSessionMiddleware")
+    
+    # Add SAML authentication backend
+    AUTHENTICATION_BACKENDS = [
+        "django.contrib.auth.backends.ModelBackend",
+        "djangosaml2.backends.Saml2Backend",
+    ]
+    
+    # Override login URL to use SAML
+    LOGIN_URL = "/saml/login/"
+    
+    # Export SAML settings for djangosaml2
+    globals()["SAML_CONFIG"] = SAML_CONFIG
+    globals()["SAML_ATTRIBUTE_MAPPING"] = SAML_ATTRIBUTE_MAPPING
+    globals()["SAML_CREATE_UNKNOWN_USER"] = SAML_CREATE_UNKNOWN_USER
+    globals()["SAML_DJANGO_USER_MAIN_ATTRIBUTE"] = SAML_DJANGO_USER_MAIN_ATTRIBUTE
+    globals()["SAML_USE_NAME_ID_AS_USERNAME"] = SAML_USE_NAME_ID_AS_USERNAME
+    globals()["SAML_DJANGO_USER_MAIN_ATTRIBUTE_LOOKUP"] = SAML_DJANGO_USER_MAIN_ATTRIBUTE_LOOKUP
+    globals()["SESSION_EXPIRE_AT_BROWSER_CLOSE"] = SESSION_EXPIRE_AT_BROWSER_CLOSE
