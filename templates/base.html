@@ -18,6 +18,9 @@
   <link rel="stylesheet"
   href='{{ STATIC_URL }}bootstrap/css/bootstrap.min.css'
   type="text/css" media="all" />
+  <link rel="stylesheet"
+  href='{{ STATIC_URL }}dark-mode.css'
+  type="text/css" media="all" />
 {% bootstrap_javascript jquery='full' %}
     <style type="text/css">
       body {
@@ -32,6 +35,8 @@
       <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
     <![endif]-->
 
+    <!-- Theme toggle script (load early to prevent flash) -->
+    <script src="{{ STATIC_URL }}theme-toggle.js"></script>
     <!-- DataTables JavaScript -->
         <script src="{{ STATIC_URL }}dataTables/js/jquery.dataTables.min.js"></script>
         <script src="{{ STATIC_URL }}dataTables/js/dataTables.bootstrap4.min.js"></script>
@@ -75,6 +80,13 @@
                           </li>
 
                           {% endif %}
+                  <!-- Theme toggle button -->
+                  <li class="nav-item">
+                      <button class="theme-toggle nav-link" type="button" aria-label="Toggle dark mode" onclick="toggleTheme()">
+                          <span class="icon-moon">&#9790;</span>
+                          <span class="icon-sun">&#9788;</span>
+                      </button>
+                  </li>
                 </ul>
               </div>
             </nav>

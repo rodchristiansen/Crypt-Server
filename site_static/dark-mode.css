@@ -1,0 +1,351 @@
+/**
+ * Dark Mode Theme for Crypt Server
+ * 
+ * This stylesheet provides dark mode support using CSS custom properties.
+ * Theme automatically respects system preferences via prefers-color-scheme.
+ * Users can also toggle manually via the theme switcher button.
+ */
+
+/* Light theme (default) */
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-tertiary: #e9ecef;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --text-muted: #868e96;
+    --border-color: #dee2e6;
+    --link-color: #007bff;
+    --link-hover: #0056b3;
+    --navbar-bg: #f8f9fa;
+    --navbar-text: #000000;
+    --card-bg: #ffffff;
+    --table-bg: #ffffff;
+    --table-stripe: #f2f2f2;
+    --table-hover: #e9ecef;
+    --input-bg: #ffffff;
+    --input-border: #ced4da;
+    --code-bg: #444444;
+    --code-text: #ffffff;
+    --btn-primary-bg: #007bff;
+    --btn-primary-text: #ffffff;
+    --dropdown-bg: #ffffff;
+    --dropdown-hover: #f8f9fa;
+    --shadow: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-tertiary: #0f3460;
+    --text-primary: #eaeaea;
+    --text-secondary: #a0a0a0;
+    --text-muted: #6c757d;
+    --border-color: #3a3a5c;
+    --link-color: #64b5f6;
+    --link-hover: #90caf9;
+    --navbar-bg: #16213e;
+    --navbar-text: #eaeaea;
+    --card-bg: #16213e;
+    --table-bg: #1a1a2e;
+    --table-stripe: #16213e;
+    --table-hover: #0f3460;
+    --input-bg: #16213e;
+    --input-border: #3a3a5c;
+    --code-bg: #0f3460;
+    --code-text: #e0e0e0;
+    --btn-primary-bg: #0f3460;
+    --btn-primary-text: #ffffff;
+    --dropdown-bg: #16213e;
+    --dropdown-hover: #0f3460;
+    --shadow: rgba(0, 0, 0, 0.3);
+}
+
+/* Auto dark mode based on system preference */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg-primary: #1a1a2e;
+        --bg-secondary: #16213e;
+        --bg-tertiary: #0f3460;
+        --text-primary: #eaeaea;
+        --text-secondary: #a0a0a0;
+        --text-muted: #6c757d;
+        --border-color: #3a3a5c;
+        --link-color: #64b5f6;
+        --link-hover: #90caf9;
+        --navbar-bg: #16213e;
+        --navbar-text: #eaeaea;
+        --card-bg: #16213e;
+        --table-bg: #1a1a2e;
+        --table-stripe: #16213e;
+        --table-hover: #0f3460;
+        --input-bg: #16213e;
+        --input-border: #3a3a5c;
+        --code-bg: #0f3460;
+        --code-text: #e0e0e0;
+        --btn-primary-bg: #0f3460;
+        --btn-primary-text: #ffffff;
+        --dropdown-bg: #16213e;
+        --dropdown-hover: #0f3460;
+        --shadow: rgba(0, 0, 0, 0.3);
+    }
+}
+
+/* Apply theme variables to elements */
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6, h3 a {
+    color: var(--text-primary);
+}
+
+a {
+    color: var(--link-color);
+}
+
+a:hover {
+    color: var(--link-hover);
+}
+
+/* Navbar */
+.navbar {
+    background-color: var(--navbar-bg) !important;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.navbar-brand,
+.navbar-nav .nav-link {
+    color: var(--navbar-text) !important;
+}
+
+.navbar-light .navbar-toggler-icon {
+    filter: var(--text-primary) == #eaeaea ? invert(1) : none;
+}
+
+[data-theme="dark"] .navbar-toggler-icon {
+    filter: invert(1);
+}
+
+/* Dropdowns */
+.dropdown-menu {
+    background-color: var(--dropdown-bg);
+    border-color: var(--border-color);
+}
+
+.dropdown-item {
+    color: var(--text-primary);
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background-color: var(--dropdown-hover);
+    color: var(--text-primary);
+}
+
+/* Cards */
+.card {
+    background-color: var(--card-bg);
+    border-color: var(--border-color);
+}
+
+.card-header {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+/* Tables */
+.table {
+    color: var(--text-primary);
+    background-color: var(--table-bg);
+}
+
+.table thead th {
+    border-color: var(--border-color);
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.table td,
+.table th {
+    border-color: var(--border-color);
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: var(--table-stripe);
+}
+
+.table-hover tbody tr:hover {
+    background-color: var(--table-hover);
+    color: var(--text-primary);
+}
+
+/* DataTables */
+.dataTables_wrapper {
+    color: var(--text-primary);
+}
+
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+    color: var(--text-primary);
+}
+
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select {
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    border-color: var(--input-border);
+}
+
+.page-item .page-link {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.page-item.active .page-link {
+    background-color: var(--btn-primary-bg);
+    border-color: var(--btn-primary-bg);
+}
+
+.page-item.disabled .page-link {
+    background-color: var(--bg-tertiary);
+    color: var(--text-muted);
+}
+
+/* Forms */
+.form-control {
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--text-primary);
+}
+
+.form-control:focus {
+    background-color: var(--input-bg);
+    color: var(--text-primary);
+    border-color: var(--link-color);
+}
+
+.form-control::placeholder {
+    color: var(--text-muted);
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: var(--btn-primary-bg);
+    border-color: var(--btn-primary-bg);
+    color: var(--btn-primary-text);
+}
+
+.btn-secondary {
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.btn-outline-secondary {
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.btn-outline-secondary:hover {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+/* Code blocks */
+code {
+    background-color: var(--code-bg);
+    color: var(--code-text);
+}
+
+pre {
+    background-color: var(--code-bg);
+    color: var(--code-text);
+    border-color: var(--border-color);
+}
+
+/* Alerts */
+.alert {
+    border-color: var(--border-color);
+}
+
+/* Badges */
+.badge-secondary {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* Modals */
+.modal-content {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+}
+
+.modal-header {
+    border-color: var(--border-color);
+}
+
+.modal-footer {
+    border-color: var(--border-color);
+}
+
+.close {
+    color: var(--text-primary);
+}
+
+/* Theme toggle button */
+.theme-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    color: var(--navbar-text);
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.theme-toggle:hover {
+    opacity: 0.8;
+}
+
+.theme-toggle .icon-sun,
+.theme-toggle .icon-moon {
+    display: none;
+}
+
+/* Show sun icon in dark mode, moon in light mode */
+[data-theme="dark"] .theme-toggle .icon-sun {
+    display: inline;
+}
+
+[data-theme="dark"] .theme-toggle .icon-moon {
+    display: none;
+}
+
+:root:not([data-theme="dark"]) .theme-toggle .icon-sun {
+    display: none;
+}
+
+:root:not([data-theme="dark"]) .theme-toggle .icon-moon {
+    display: inline;
+}
+
+/* System preference dark mode icon visibility */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .theme-toggle .icon-sun {
+        display: inline;
+    }
+    :root:not([data-theme="light"]) .theme-toggle .icon-moon {
+        display: none;
+    }
+}
