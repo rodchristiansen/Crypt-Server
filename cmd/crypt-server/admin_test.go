@@ -45,6 +45,40 @@ func TestCreateFirstAdminRequiresPassword(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestResetUserPassword(t *testing.T) {
+	dataStore := newTestSQLiteStore(t)
+	_, err := dataStore.AddUser("testuser", "oldhash", false, false, true, false, "local")
+	require.NoError(t, err)
+
+	err = resetUserPassword(dataStore, "testuser", "newpassword")
+	require.NoError(t, err)
+
+	user, err := dataStore.GetUserByUsername("testuser")
+	require.NoError(t, err)
+	require.NotEqual(t, "oldhash", user.PasswordHash)
+}
+
+func TestResetUserPasswordRequiresUsername(t *testing.T) {
+	dataStore := newTestSQLiteStore(t)
+	err := resetUserPassword(dataStore, " ", "newpassword")
+	require.Error(t, err)
+}
+
+func TestResetUserPasswordRequiresPassword(t *testing.T) {
+	dataStore := newTestSQLiteStore(t)
+	_, err := dataStore.AddUser("testuser", "oldhash", false, false, true, false, "local")
+	require.NoError(t, err)
+
+	err = resetUserPassword(dataStore, "testuser", "")
+	require.Error(t, err)
+}
+
+func TestResetUserPasswordUserNotFound(t *testing.T) {
+	dataStore := newTestSQLiteStore(t)
+	err := resetUserPassword(dataStore, "nonexistent", "newpassword")
+	require.Error(t, err)
+}
+
 func newTestSQLiteStore(t *testing.T) *store.SQLiteStore {
 	t.Helper()
 	key := make([]byte, 32)

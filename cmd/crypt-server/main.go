@@ -20,8 +20,9 @@ func main() {
 	validateMigrations := flag.Bool("validate-migrations", false, "Validate embedded migrations and exit")
 	migrationsDriver := flag.String("migrations-driver", "", "Migrations driver to target (postgres or sqlite)")
 	createAdmin := flag.Bool("create-admin", false, "Create the first admin user and exit")
-	adminUsername := flag.String("admin-username", "", "Username for the first admin user")
-	adminPassword := flag.String("admin-password", "", "Password for the first admin user")
+	resetPassword := flag.Bool("reset-password", false, "Reset a user's password and exit")
+	adminUsername := flag.String("username", "", "Username for admin operations")
+	adminPassword := flag.String("password", "", "Password for admin operations")
 	importFixturePath := flag.String("import-fixture", "", "Path to fixture JSON file to import (database must be empty)")
 	flag.Parse()
 
@@ -82,6 +83,14 @@ func main() {
 			logger.Fatalf("create admin failed: %v", err)
 		}
 		logger.Printf("created first admin user: %s", *adminUsername)
+		return
+	}
+
+	if *resetPassword {
+		if err := resetUserPassword(dataStore, *adminUsername, *adminPassword); err != nil {
+			logger.Fatalf("reset password failed: %v", err)
+		}
+		logger.Printf("password reset for user: %s", *adminUsername)
 		return
 	}
 

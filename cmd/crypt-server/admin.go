@@ -32,3 +32,25 @@ func createFirstAdmin(dataStore store.Store, username, password string) error {
 	}
 	return nil
 }
+
+func resetUserPassword(dataStore store.Store, username, password string) error {
+	if strings.TrimSpace(username) == "" {
+		return fmt.Errorf("username is required")
+	}
+	if password == "" {
+		return fmt.Errorf("password is required")
+	}
+	user, err := dataStore.GetUserByUsername(username)
+	if err != nil {
+		return fmt.Errorf("get user: %w", err)
+	}
+	hash, err := app.HashPassword(password)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	_, err = dataStore.UpdateUserPassword(user.ID, hash, false)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	return nil
+}

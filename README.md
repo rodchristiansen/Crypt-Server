@@ -2,9 +2,6 @@
 
 **[Crypt][1]** is a tool for securely storing secrets such as FileVault 2 recovery keys. It is made up of a client app, and a web app for storing the keys.
 
-This Docker image contains the fully configured Crypt web app. A default admin user has been preconfigured, use admin/password to login.
-If you intend on using the server for anything semi-serious it is a good idea to change the password or add a new admin user and delete the default one.
-
 ## Features
 
 - Secrets are encrypted in the database
@@ -50,7 +47,7 @@ Convert the Django JSON fixture into the new format. This re-encrypts all secret
   -password-map password-map.csv
 ```
 
-The optional password map CSV allows you to set passwords for users who should have local login enabled. Amy users not in this map will be configured for SAML authentication only. The CSV should have the following format (including header row):
+The optional password map CSV allows you to set passwords for users who should have local login enabled. Any users not in this map will be configured for SAML authentication only. The CSV should have the following format (including header row):
 
 ```csv
 username_or_email,password,must_reset_password
@@ -61,7 +58,16 @@ Users not in the password map will be configured for SAML authentication only.
 
 ### Step 4: Import into the new server
 
-Import the converted fixture into the Go server. **The database must be empty** (no existing computers, secrets, requests, or users):
+Import the converted fixture into the Go server. **The database must be empty** (no existing computers, secrets, requests, or users).
+
+First, set the required environment variables:
+
+```bash
+export FIELD_ENCRYPTION_KEY=$(cat new-field-encryption-key.txt)
+export SESSION_KEY=$(./cryptctl gen-key)
+```
+
+Then run the import:
 
 ```bash
 ./crypt-server -import-fixture migration-export.json
@@ -75,21 +81,19 @@ The import will:
 - Import all users with their authentication settings
 - Import all requests with their approval status
 
-After import, start the server with the required environment variables:
+After import completes, start the server normally (the environment variables are already set):
 
 ```bash
-export FIELD_ENCRYPTION_KEY=$(cat new-field-encryption-key.txt)
-export SESSION_KEY=$(openssl rand -base64 32)
 ./crypt-server
 ```
 
 ## Installation instructions
 
-It is recommended that you use [Docker](https://github.com/grahamgilbert/Crypt-Server/blob/master/docs/Docker.md) to run this, but if you wish to run directly on a host, installation instructions are over in the [docs directory](https://github.com/grahamgilbert/Crypt-Server/blob/master/docs/Installation_on_Ubuntu_1404.md)
+It is recommended that you use [Docker](docs/Docker.md) to run this. See the Docker documentation for complete setup instructions.
 
-### Migrating from versions earlier than Crypt 3.0
+### Migrating from the Django version
 
-Crypt 3 changed it's encryption backend, so when migrating from versions earlier than Crypt 3.0, you should first run Crypt 3.2.0 to perform the migration, and then upgrade to the latest version. The last version to support legacy migrations was Crypt 3.2.
+If you are migrating from the Django version of Crypt Server, follow the "Migration from Django" steps above. If you are running a version earlier than Crypt 3.0, you should first upgrade to Django Crypt 3.2.0 to migrate from the legacy encryption format, then follow the migration steps to move to the Go version.
 
 ## Settings
 
@@ -99,7 +103,7 @@ All settings are configured via environment variables.
 
 - `FIELD_ENCRYPTION_KEY` - Base64-encoded 32-byte key for encrypting secrets. Generate with `./cryptctl gen-key`.
 
-- `SESSION_KEY` - A random string (at least 32 bytes) used to sign session cookies. Generate with `openssl rand -base64 32`.
+- `SESSION_KEY` - A random string (at least 32 bytes) used to sign session cookies. Generate with `./cryptctl gen-key`.
 
 ### Database (one required)
 
@@ -142,7 +146,15 @@ Example:
 Create the initial admin user (only works when no users exist yet):
 
 ``` bash
-./crypt-server -create-admin -admin-username=admin -admin-password='your-password'
+./crypt-server -create-admin -username=admin -password='your-password'
+```
+
+## Password reset
+
+Reset a user's password from the command line:
+
+``` bash
+./crypt-server -reset-password -username=admin -password='new-password'
 ```
 
 ## Screenshots
