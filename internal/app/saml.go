@@ -22,16 +22,6 @@ func BuildSAMLProvider(cfg *SAMLConfig) (*samlsp.Middleware, error) {
 		return nil, fmt.Errorf("parse saml root url: %w", err)
 	}
 
-	keyPair, err := tls.LoadX509KeyPair(cfg.CertificatePath, cfg.PrivateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("load saml keypair: %w", err)
-	}
-
-	cert, err := parseX509Certificate(keyPair.Certificate)
-	if err != nil {
-		return nil, fmt.Errorf("parse saml certificate: %w", err)
-	}
-
 	idpMetadata, err := loadIDPMetadata(cfg)
 	if err != nil {
 		return nil, err
@@ -42,20 +32,34 @@ func BuildSAMLProvider(cfg *SAMLConfig) (*samlsp.Middleware, error) {
 		entityID = rootURL.ResolveReference(&url.URL{Path: cfg.MetadataURLPath}).String()
 	}
 
-	privateKey, ok := keyPair.PrivateKey.(*rsa.PrivateKey)
-	if !ok {
-		return nil, errors.New("saml private key must be RSA")
-	}
-
 	opts := samlsp.Options{
 		EntityID:           entityID,
 		URL:                *rootURL,
-		Key:                privateKey,
-		Certificate:        cert,
 		IDPMetadata:        idpMetadata,
 		AllowIDPInitiated:  cfg.AllowIDPInitiated,
 		DefaultRedirectURI: cfg.DefaultRedirectURI,
 		SignRequest:        cfg.SignRequest,
+	}
+
+	// Load certificate and private key if provided
+	if cfg.CertificatePath != "" && cfg.PrivateKeyPath != "" {
+		keyPair, err := tls.LoadX509KeyPair(cfg.CertificatePath, cfg.PrivateKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("load saml keypair: %w", err)
+		}
+
+		cert, err := parseX509Certificate(keyPair.Certificate)
+		if err != nil {
+			return nil, fmt.Errorf("parse saml certificate: %w", err)
+		}
+
+		privateKey, ok := keyPair.PrivateKey.(*rsa.PrivateKey)
+		if !ok {
+			return nil, errors.New("saml private key must be RSA")
+		}
+
+		opts.Key = privateKey
+		opts.Certificate = cert
 	}
 
 	middleware, err := samlsp.New(opts)

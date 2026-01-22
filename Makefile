@@ -29,7 +29,6 @@ run-sqlite-saml: build cryptctl
 	@echo "Server will be available at http://localhost:8080"
 	@test -f .field-encryption-key || ./cryptctl gen-key > .field-encryption-key
 	@test -f saml-config.yaml || (echo "Error: saml-config.yaml not found" && exit 1)
-	@test -f sp.crt || (echo "Error: sp.crt not found. Run: openssl req -x509 -newkey rsa:2048 -keyout sp.key -out sp.crt -days 3650 -nodes -subj '/CN=crypt-server'" && exit 1)
 	SQLITE_PATH=./crypt.db \
 	FIELD_ENCRYPTION_KEY=$$(cat .field-encryption-key) \
 	SESSION_KEY=$${SESSION_KEY:-$$(./cryptctl gen-key)} \

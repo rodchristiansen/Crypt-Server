@@ -49,8 +49,10 @@ func LoadSAMLConfig(path string) (*SAMLConfig, error) {
 	if cfg.IDPMetadataPath == "" && cfg.IDPMetadataURL == "" {
 		return nil, errors.New("saml config missing idp metadata path or url")
 	}
-	if cfg.CertificatePath == "" || cfg.PrivateKeyPath == "" {
-		return nil, errors.New("saml config missing certificate or private key path")
+	// Certificate and private key are optional - only needed if sign_request is true
+	// or if the IdP encrypts assertions
+	if cfg.SignRequest && (cfg.CertificatePath == "" || cfg.PrivateKeyPath == "") {
+		return nil, errors.New("saml config requires certificate and private key when sign_request is enabled")
 	}
 	if cfg.GroupsAttribute == "" {
 		cfg.GroupsAttribute = "memberOf"
