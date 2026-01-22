@@ -1,60 +1,103 @@
 /**
  * Theme Toggle Script for Crypt Server
- * 
- * Handles dark/light mode switching with localStorage persistence
- * and system preference detection.
+ *
+ * Handles dark/light mode switching with:
+ * - Automatic system preference detection (prefers-color-scheme)
+ * - Manual override with toggle button
+ * - localStorage persistence of user preference
+ * - "Auto" mode that follows system preference
  */
 (function() {
     'use strict';
 
-    // Theme storage key
     const THEME_KEY = 'crypt-theme';
 
     /**
-     * Get the current theme from localStorage or system preference
+     * Get system preference
      */
-    function getPreferredTheme() {
-        const stored = localStorage.getItem(THEME_KEY);
-        if (stored) {
-            return stored;
-        }
-        // Fallback to system preference
+    function getSystemTheme() {
         return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    /**
+     * Get effective theme (what should be displayed)
+     */
+    function getEffectiveTheme() {
+        const stored = localStorage.getItem(THEME_KEY);
+        if (stored === 'auto' || stored === null) {
+            return getSystemTheme();
+        }
+        return stored;
+    }
+
+    /**
+     * Get stored preference (auto, light, or dark)
+     */
+    function getStoredPreference() {
+        return localStorage.getItem(THEME_KEY) || 'auto';
     }
 
     /**
      * Apply theme to document
      */
-    function setTheme(theme) {
+    function applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem(THEME_KEY, theme);
-        
-        // Update toggle button accessibility
-        const toggleBtn = document.querySelector('.theme-toggle');
-        if (toggleBtn) {
-            toggleBtn.setAttribute('aria-label', 
-                theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
-            );
-        }
+        updateToggleButton();
     }
 
     /**
-     * Toggle between light and dark themes
+     * Update toggle button icon and label
+     */
+    function updateToggleButton() {
+        const toggleBtn = document.querySelector('.theme-toggle');
+        if (!toggleBtn) return;
+
+        const preference = getStoredPreference();
+        const effective = getEffectiveTheme();
+
+        // Update aria-label based on current state
+        let label;
+        if (preference === 'auto') {
+            label = 'Theme: Auto (following system). Click to switch to ' + 
+                    (effective === 'dark' ? 'light' : 'dark') + ' mode';
+        } else {
+            label = 'Theme: ' + preference + '. Click to switch to auto mode';
+        }
+        toggleBtn.setAttribute('aria-label', label);
+
+        // Update visual indicator for auto mode
+        toggleBtn.classList.toggle('auto-mode', preference === 'auto');
+    }
+
+    /**
+     * Cycle through themes: auto -> light -> dark -> auto
      */
     function toggleTheme() {
-        const current = document.documentElement.getAttribute('data-theme') || getPreferredTheme();
-        const next = current === 'dark' ? 'light' : 'dark';
-        setTheme(next);
+        const current = getStoredPreference();
+        let next;
+
+        if (current === 'auto') {
+            // If auto and showing dark, switch to light; if showing light, switch to dark
+            next = getEffectiveTheme() === 'dark' ? 'light' : 'dark';
+        } else if (current === 'light') {
+            next = 'dark';
+        } else {
+            // dark -> auto
+            next = 'auto';
+        }
+
+        localStorage.setItem(THEME_KEY, next);
+        applyTheme(getEffectiveTheme());
     }
 
     // Apply theme immediately to prevent flash
-    setTheme(getPreferredTheme());
+    applyTheme(getEffectiveTheme());
 
     // Listen for system preference changes
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-        // Only auto-switch if user hasn't set a manual preference
-        if (!localStorage.getItem(THEME_KEY)) {
-            setTheme(e.matches ? 'dark' : 'light');
+        // Only auto-switch if user preference is 'auto'
+        if (getStoredPreference() === 'auto') {
+            applyTheme(e.matches ? 'dark' : 'light');
         }
     });
 
@@ -63,9 +106,10 @@
         const toggleBtn = document.querySelector('.theme-toggle');
         if (toggleBtn) {
             toggleBtn.addEventListener('click', toggleTheme);
+            updateToggleButton();
         }
     });
 
-    // Expose toggle function globally for inline onclick handlers
+    // Expose toggle function globally
     window.toggleTheme = toggleTheme;
 })();
