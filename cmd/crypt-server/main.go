@@ -78,6 +78,9 @@ func main() {
 		logger.Fatalf("unsupported database driver: %s", dbConfig.driver)
 	}
 
+	// Wrap store with logging
+	dataStore = store.NewLoggingStore(dataStore, logger)
+
 	if *createAdmin {
 		if err := createFirstAdmin(dataStore, *adminUsername, *adminPassword); err != nil {
 			logger.Fatalf("create admin failed: %v", err)
