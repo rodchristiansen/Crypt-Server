@@ -170,9 +170,16 @@ func (s *Server) handleNewSecret(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if _, _, err := s.store.AddSecret(computer.ID, secretType, secret, rotationRequired); err != nil {
+		_, newSecretEscrowed, err := s.store.AddSecret(computer.ID, secretType, secret, rotationRequired)
+		if err != nil {
 			s.renderError(w, err)
 			return
+		}
+		user := s.currentUser(r)
+		if newSecretEscrowed {
+			s.logger.Printf("secret escrowed manually: serial=%s type=%s by_user=%s", computer.Serial, secretType, user.Username)
+		} else {
+			s.logger.Printf("secret updated manually: serial=%s type=%s by_user=%s", computer.Serial, secretType, user.Username)
 		}
 		http.Redirect(w, r, fmt.Sprintf("/info/%d/", computer.ID), http.StatusSeeOther)
 	default:
@@ -412,6 +419,8 @@ func (s *Server) handleRetrieve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+
+	s.logger.Printf("secret retrieved: serial=%s type=%s by_user=%s requested_by=%s", computer.Serial, secret.SecretType, user.Username, req.RequestingUser)
 
 	secretChars := make([]SecretChar, 0, len(secret.Secret))
 	for _, char := range secret.Secret {
@@ -1088,6 +1097,12 @@ func (s *Server) handleCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if newSecretEscrowed {
+		s.logger.Printf("secret escrowed: serial=%s type=%s username=%s macname=%s", serial, secretType, userName, macName)
+	} else {
+		s.logger.Printf("secret updated: serial=%s type=%s username=%s macname=%s", serial, secretType, userName, macName)
+	}
+
 	payload := map[string]any{
 		"serial":              computer.Serial,
 		"username":            computer.Username,
@@ -1316,6 +1331,8 @@ func (s *Server) loadUserFromSAML(r *http.Request) *User {
 		if err != nil {
 			return nil
 		}
+		s.logger.Printf("user created via SAML: username=%s is_staff=%t can_approve=%t", username, isStaff, canApprove)
+		_, _ = s.store.AddAuditEvent("saml", username, "user_created", "created via SAML login", clientIP(r))
 		user := mapStoreUser(newUser)
 		user.IsAuthenticated = true
 		return &user
@@ -1352,6 +1369,8 @@ func (s *Server) loadUserFromSAML(r *http.Request) *User {
 		if err != nil {
 			return nil
 		}
+		s.logger.Printf("user updated via SAML: username=%s is_staff=%t can_approve=%t", username, updatedUser.IsStaff, updatedUser.CanApprove)
+		_, _ = s.store.AddAuditEvent("saml", username, "user_updated", "permissions updated via SAML login", clientIP(r))
 	}
 	user := mapStoreUser(updatedUser)
 	user.IsAuthenticated = true
