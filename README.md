@@ -60,3 +60,42 @@ Approve Request:
 
 Key Retrieval:
 ![Key Retrieval](https://raw.github.com/grahamgilbert/Crypt-Server/master/docs/images/key_retrieval.png)
+
+## API Key Authentication
+
+Crypt Server supports API key authentication for the `/checkin/` and `/verify/` endpoints. This adds a layer of security to prevent unauthorized key escrow requests.
+
+### Configuration
+
+Set the `CRYPT_API_KEY` environment variable to enable API key authentication:
+
+```bash
+# Docker Compose
+environment:
+  - CRYPT_API_KEY=your-secret-api-key-here
+
+# Or export directly
+export CRYPT_API_KEY=your-secret-api-key-here
+```
+
+### Client Configuration
+
+Clients must include the API key in the `X-API-Key` header:
+
+```bash
+curl -X POST https://crypt.example.com/checkin/ \
+    -H "X-API-Key: your-secret-api-key-here" \
+    -d "serial=ABC123&recovery_password=..."
+```
+
+### Generating a Secure API Key
+
+Generate a strong API key using Python:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+### Backward Compatibility
+
+If `CRYPT_API_KEY` is not set, the endpoints remain open for backward compatibility with existing clients that don't support API key authentication.
