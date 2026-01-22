@@ -349,3 +349,30 @@ pre {
         display: none;
     }
 }
+
+/* Auto mode indicator - shows "A" badge when following system */
+.theme-toggle.auto-mode::after {
+    content: 'A';
+    font-size: 0.6rem;
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: var(--link-color);
+    color: white;
+    border-radius: 50%;
+    width: 12px;
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+.theme-toggle {
+    position: relative;
+}
+
+/* Tooltip for auto mode */
+.theme-toggle[title] {
+    cursor: help;
+}
