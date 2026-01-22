@@ -608,6 +608,7 @@ func (s *Server) handleNewUser(w http.ResponseWriter, r *http.Request) {
 			s.renderError(w, err)
 			return
 		}
+		s.logger.Printf("user created: username=%s is_staff=%t can_approve=%t by_user=%s", username, isStaff, canApprove, s.currentUser(r).Username)
 		if _, err := s.store.AddAuditEvent(s.currentUser(r).Username, username, "user_created", "", clientIP(r)); err != nil {
 			s.renderError(w, err)
 			return
@@ -713,6 +714,7 @@ func (s *Server) handleUserEdit(w http.ResponseWriter, r *http.Request) {
 			s.renderError(w, err)
 			return
 		}
+		s.logger.Printf("user edited: username=%s is_staff=%t can_approve=%t by_user=%s", username, isStaff, canApprove, s.currentUser(r).Username)
 		if reason := buildUserUpdateReason(user, updated); reason != "" {
 			if _, err := s.store.AddAuditEvent(s.currentUser(r).Username, updated.Username, "user_updated", reason, clientIP(r)); err != nil {
 				s.renderError(w, err)
@@ -893,6 +895,7 @@ func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 			s.renderError(w, err)
 			return
 		}
+		s.logger.Printf("user deleted: username=%s by_user=%s", user.Username, s.currentUser(r).Username)
 		if _, err := s.store.AddAuditEvent(s.currentUser(r).Username, user.Username, "user_deleted", "", clientIP(r)); err != nil {
 			s.renderError(w, err)
 			return
