@@ -120,12 +120,15 @@ def tableajax(request):
     if order_name != "info_button":
         searched_machines = searched_machines.order_by(order_string)
 
-    limited_machines = searched_machines[start : (start + length)]
+    if length == -1:
+        limited_machines = searched_machines
+    else:
+        limited_machines = searched_machines[start : (start + length)]
 
     return_data = {}
     return_data["draw"] = int(draw)
     return_data["recordsTotal"] = machines.count()
-    return_data["recordsFiltered"] = return_data["recordsTotal"]
+    return_data["recordsFiltered"] = searched_machines.count()
 
     return_data["data"] = []
     settings_time_zone = None
