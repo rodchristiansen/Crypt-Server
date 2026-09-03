@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/crewjam/saml/samlsp"
 )
@@ -24,6 +25,8 @@ type Server struct {
 	samlSP         *samlsp.Middleware
 	samlConfig     *SAMLConfig
 	settings       Settings
+	// webhookClient is overridable so tests can capture deliveries.
+	webhookClient *http.Client
 }
 
 func NewServer(store store.Store, renderer *Renderer, logger *log.Logger, sessionManager *SessionManager, csrfManager *CSRFManager, samlSP *samlsp.Middleware, samlConfig *SAMLConfig, settings Settings) *Server {
@@ -36,6 +39,13 @@ func NewServer(store store.Store, renderer *Renderer, logger *log.Logger, sessio
 		samlSP:         samlSP,
 		samlConfig:     samlConfig,
 		settings:       settings,
+		webhookClient:  &http.Client{Timeout: webhookTimeout},
+	}
+	if server.settings.StaleAfter <= 0 {
+		server.settings.StaleAfter = 30 * 24 * time.Hour
+	}
+	if server.settings.RequestRetention <= 0 {
+		server.settings.RequestRetention = 7 * 24 * time.Hour
 	}
 	server.startRequestCleanupJob()
 	return server
@@ -52,6 +62,9 @@ func (s *Server) Routes() http.Handler {
 	if s.samlSP != nil {
 		mux.Handle("/saml/", s.samlSP)
 		mux.Handle("/saml2/", s.samlSP)
+	}
+	if s.settings.APIEnabled {
+		mux.Handle(APIPrefix+"/", s.apiRoutes())
 	}
 	mux.HandleFunc("/checkin/", s.handleCheckin)
 	mux.HandleFunc("/verify/", s.handleVerify)
@@ -76,7 +89,7 @@ func (s *Server) Routes() http.Handler {
 func withTrailingSlashRedirect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Don't redirect static files
-		if !strings.HasPrefix(r.URL.Path, "/static/") && r.URL.Path != "/" && !strings.HasSuffix(r.URL.Path, "/") {
+		if !strings.HasPrefix(r.URL.Path, "/static/") && !strings.HasPrefix(r.URL.Path, APIPrefix+"/") && r.URL.Path != "/" && !strings.HasSuffix(r.URL.Path, "/") {
 			http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
 			return
 		}
@@ -139,6 +152,11 @@ func isUnsafeMethod(method string) bool {
 
 func (s *Server) isCSRFExempt(r *http.Request) bool {
 	switch {
+	case strings.HasPrefix(r.URL.Path, APIPrefix+"/"):
+		// The API enforces its own CSRF rule: session-authenticated writes
+		// must carry the token in a header, since reading the form body
+		// would consume the JSON payload.
+		return true
 	case strings.HasPrefix(r.URL.Path, "/checkin/"):
 		return true
 	case strings.HasPrefix(r.URL.Path, "/verify/"):

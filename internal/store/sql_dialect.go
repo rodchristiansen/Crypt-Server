@@ -462,6 +462,7 @@ type AuditFilter struct {
 	Action     string
 	TargetUser string
 	TargetType string
+	TargetID   string
 	From       *time.Time
 	To         *time.Time
 	Limit      int
@@ -489,6 +490,9 @@ func (f AuditFilter) where(q *queryBuilder) string {
 	}
 	if f.TargetType != "" {
 		clauses = append(clauses, "target_type = "+q.bind(f.TargetType))
+	}
+	if f.TargetID != "" {
+		clauses = append(clauses, "target_id = "+q.bind(f.TargetID))
 	}
 	if f.From != nil {
 		clauses = append(clauses, "created_at >= "+q.bind(*f.From))

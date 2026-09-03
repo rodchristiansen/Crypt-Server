@@ -92,6 +92,10 @@ func (s *auditPaginationStore) SearchAuditEventsPaged(query string, limit, offse
 	return []*store.AuditEvent{}, nil
 }
 
+func (s *auditPaginationStore) SessionsRevokedAt(username string) (*time.Time, error) {
+	return nil, nil
+}
+
 func (s *auditPaginationStore) CountAuditEvents() (int, error) {
 	return 1, nil
 }

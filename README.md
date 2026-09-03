@@ -123,6 +123,42 @@ All settings are configured via environment variables.
 
 - `ROTATE_VIEWED_SECRETS` - Instruct compatible clients (Crypt 3.2.0+) to rotate and re-escrow secrets after viewing. Default: `false`.
 
+- `API_ENABLED` - Mount the JSON API at `/api/v1/`. Default: `true`.
+
+- `CRYPT_API_KEY` - A shared key accepted on `X-API-Key` for escrow calls only, for deployments migrating from the shared-key middleware. Prefer minted tokens. Default: unset.
+
+- `WEBHOOKS_ENABLED` - Deliver server events to registered webhook subscribers. Default: `false`.
+
+- `STALE_AFTER_DAYS` - How long a computer may go without checking in before it counts as stale in reports. Default: `30`.
+
+- `REQUEST_RETENTION_DAYS` - How long an approved retrieval request stays current. Default: `7`.
+
+## JSON API
+
+The server exposes a JSON API at `/api/v1/`. It covers escrow, computers, secrets, the
+request and approval workflow, users, tokens, audit and reporting. See [docs/API.md](docs/API.md)
+for the full reference.
+
+Mint the first token from the command line, since there is no token to authenticate the
+token endpoint with yet:
+
+``` bash
+./crypt-server -create-token -token-name=reportmate -token-kind=service -token-scopes=computers:read,secrets:read
+```
+
+The secret is printed once and never stored. Present it as `Authorization: Bearer <token>`.
+
+## Rotating the encryption key
+
+Re-encrypt every stored secret under a replacement key. This is a command-line operation on
+purpose: a new encryption key should never travel over HTTP.
+
+``` bash
+NEW_FIELD_ENCRYPTION_KEY=$(./cryptctl gen-key) ./crypt-server -rekey
+```
+
+Set `FIELD_ENCRYPTION_KEY` to the new key before restarting the server.
+
 ## Database migrations
 
 The Go server applies embedded SQL migrations on startup and records applied versions in `schema_migrations`.

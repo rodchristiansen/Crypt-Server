@@ -1285,8 +1285,13 @@ func (s *Server) loadUserFromRequest(r *http.Request) *User {
 	if err != nil {
 		return s.loadUserFromSAML(r)
 	}
-	username, ok := s.sessionManager.Validate(cookie.Value)
+	username, issuedAt, ok := s.sessionManager.ValidateWithIssuedAt(cookie.Value)
 	if !ok {
+		return s.loadUserFromSAML(r)
+	}
+	// A session issued before the account's sessions were revoked is dead,
+	// which is what makes offboarding take effect immediately.
+	if revokedAt, err := s.store.SessionsRevokedAt(username); err == nil && revokedAt != nil && !issuedAt.After(*revokedAt) {
 		return s.loadUserFromSAML(r)
 	}
 	dbUser, err := s.store.GetUserByUsername(username)

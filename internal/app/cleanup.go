@@ -17,7 +17,7 @@ func (s *Server) startRequestCleanupJob() {
 }
 
 func (s *Server) cleanupOldRequests() {
-	cutoff := time.Now().Add(-requestCleanupAfterApproval)
+	cutoff := time.Now().Add(-s.requestRetention())
 	updated, err := s.store.CleanupRequests(cutoff)
 	if err != nil {
 		s.logger.Printf("cleanup requests failed: %v", err)
@@ -26,4 +26,13 @@ func (s *Server) cleanupOldRequests() {
 	if updated > 0 {
 		s.logger.Printf("cleanup requests updated %d rows", updated)
 	}
+}
+
+// requestRetention is how long an approved request stays current. It falls
+// back to the historical seven days when unset.
+func (s *Server) requestRetention() time.Duration {
+	if s.settings.RequestRetention > 0 {
+		return s.settings.RequestRetention
+	}
+	return requestCleanupAfterApproval
 }

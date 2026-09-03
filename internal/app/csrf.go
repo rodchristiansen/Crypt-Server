@@ -69,3 +69,23 @@ func (m *CSRFManager) ValidateRequest(r *http.Request) bool {
 	}
 	return subtle.ConstantTimeCompare([]byte(cookieToken), []byte(formToken)) == 1
 }
+
+// CSRFHeaderName is the header a JSON client sends its CSRF token in. The
+// form-encoded path cannot be reused for the API because reading the form
+// would consume the JSON body.
+const CSRFHeaderName = "X-CSRF-Token"
+
+// ValidateHeader compares the CSRF cookie against the CSRF header. It is used
+// by the JSON API, where a caller authenticated by session cookie must prove
+// the request did not originate cross-site.
+func (m *CSRFManager) ValidateHeader(r *http.Request) bool {
+	cookieToken := m.TokenFromRequest(r)
+	if cookieToken == "" {
+		return false
+	}
+	headerToken := r.Header.Get(CSRFHeaderName)
+	if headerToken == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(cookieToken), []byte(headerToken)) == 1
+}

@@ -47,35 +47,49 @@ func (s *SessionManager) createAt(username string, now time.Time) (string, error
 }
 
 func (s *SessionManager) Validate(token string) (string, bool) {
-	return s.validateAt(token, time.Now())
+	username, _, ok := s.validateWithIssuedAt(token, time.Now())
+	return username, ok
+}
+
+// ValidateWithIssuedAt validates a session and also reports when it was
+// issued, so a session created before an account's sessions were revoked can
+// be rejected.
+func (s *SessionManager) ValidateWithIssuedAt(token string) (string, time.Time, bool) {
+	return s.validateWithIssuedAt(token, time.Now())
 }
 
 func (s *SessionManager) validateAt(token string, now time.Time) (string, bool) {
+	username, _, ok := s.validateWithIssuedAt(token, now)
+	return username, ok
+}
+
+func (s *SessionManager) validateWithIssuedAt(token string, now time.Time) (string, time.Time, bool) {
 	if token == "" {
-		return "", false
+		return "", time.Time{}, false
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil {
-		return "", false
+		return "", time.Time{}, false
 	}
 	parts := strings.Split(string(decoded), "|")
 	if len(parts) != 3 {
-		return "", false
+		return "", time.Time{}, false
 	}
 	username := parts[0]
 	timestamp, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return "", false
+		return "", time.Time{}, false
 	}
 	payload := parts[0] + "|" + parts[1]
 	expected := s.sign(payload)
 	if !hmac.Equal([]byte(expected), []byte(parts[2])) {
-		return "", false
+		return "", time.Time{}, false
 	}
-	if now.After(time.Unix(timestamp, 0).Add(s.ttl)) {
-		return "", false
+	issuedAt := time.Unix(timestamp, 0)
+	if now.After(issuedAt.Add(s.ttl)) {
+		return "", time.Time{}, false
 	}
-	return username, true
+	return username, issuedAt, true
 }
 
 func (s *SessionManager) SetCookie(w http.ResponseWriter, value string, secure bool) {

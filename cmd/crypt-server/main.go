@@ -6,10 +6,12 @@ import (
 	"crypt-server/internal/migrate"
 	"crypt-server/internal/store"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/crewjam/saml/samlsp"
@@ -24,6 +26,12 @@ func main() {
 	adminUsername := flag.String("username", "", "Username for admin operations")
 	adminPassword := flag.String("password", "", "Password for admin operations")
 	importFixturePath := flag.String("import-fixture", "", "Path to fixture JSON file to import (database must be empty)")
+	createToken := flag.Bool("create-token", false, "Mint an API token and exit")
+	tokenName := flag.String("token-name", "", "Name for the API token")
+	tokenKind := flag.String("token-kind", "service", "API token kind: device, service or user")
+	tokenScopes := flag.String("token-scopes", "", "Comma-separated API token scopes")
+	tokenUser := flag.String("token-user", "", "Username a user token acts as")
+	rekey := flag.Bool("rekey", false, "Re-encrypt every secret under NEW_FIELD_ENCRYPTION_KEY and exit")
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "crypt-server ", log.LstdFlags)
@@ -97,6 +105,25 @@ func main() {
 		return
 	}
 
+	if *createToken {
+		plaintext, err := createAPIToken(dataStore, *tokenName, *tokenKind, *tokenScopes, *tokenUser)
+		if err != nil {
+			logger.Fatalf("create token failed: %v", err)
+		}
+		logger.Printf("created %s token %q; the secret is shown once:", *tokenKind, *tokenName)
+		fmt.Println(plaintext)
+		return
+	}
+
+	if *rekey {
+		updated, err := rekeySecrets(dataStore, os.Getenv("NEW_FIELD_ENCRYPTION_KEY"))
+		if err != nil {
+			logger.Fatalf("rekey failed: %v", err)
+		}
+		logger.Printf("re-encrypted %d secrets; set FIELD_ENCRYPTION_KEY to the new key before restarting", updated)
+		return
+	}
+
 	if *importFixturePath != "" {
 		logger.Printf("importing fixture from %s", *importFixturePath)
 		if err := importFixture(dataStore, *importFixturePath); err != nil {
@@ -122,6 +149,11 @@ func main() {
 		CookieSecure:           envBool("SESSION_COOKIE_SECURE", false),
 		RequestCleanupInterval: time.Hour,
 		RotateViewedSecrets:    envBool("ROTATE_VIEWED_SECRETS", false),
+		APIEnabled:             envBool("API_ENABLED", true),
+		LegacyAPIKey:           strings.TrimSpace(os.Getenv("CRYPT_API_KEY")),
+		StaleAfter:             time.Duration(envInt("STALE_AFTER_DAYS", 30)) * 24 * time.Hour,
+		WebhooksEnabled:        envBool("WEBHOOKS_ENABLED", false),
+		RequestRetention:       time.Duration(envInt("REQUEST_RETENTION_DAYS", 7)) * 24 * time.Hour,
 	}
 	csrfManager := app.NewCSRFManager("crypt_csrf", 32)
 
@@ -157,6 +189,18 @@ func envBool(key string, fallback bool) bool {
 		return fallback
 	}
 	parsed, err := strconv.ParseBool(raw)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func envInt(key string, fallback int) int {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(raw)
 	if err != nil {
 		return fallback
 	}

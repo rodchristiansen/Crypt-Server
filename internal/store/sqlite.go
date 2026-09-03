@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -22,7 +23,7 @@ func NewSQLiteStore(dsn string, codec SecretCodec) (*SQLiteStore, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("sqlite dsn is required")
 	}
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", sqliteDSN(dsn))
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
@@ -35,6 +36,22 @@ func NewSQLiteStore(dsn string, codec SecretCodec) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("enable foreign keys: %w", err)
 	}
 	return &SQLiteStore{db: db, codec: codec}, nil
+}
+
+// sqliteDSN adds the pragmas the server relies on to every pooled connection.
+// Write-ahead logging lets readers run alongside a writer, and a busy timeout
+// makes a concurrent writer wait instead of failing with SQLITE_BUSY -- which
+// matters because background work (request cleanup, webhook delivery) writes
+// while requests are being served.
+func sqliteDSN(dsn string) string {
+	if strings.Contains(dsn, "_pragma=") {
+		return dsn
+	}
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+	return dsn + separator + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 }
 
 func NewSQLiteStoreWithDB(db *sql.DB, codec SecretCodec) *SQLiteStore {
