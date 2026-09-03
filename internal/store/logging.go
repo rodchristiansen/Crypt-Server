@@ -253,3 +253,213 @@ func (s *LoggingStore) ImportUser(id int, username, passwordHash string, isStaff
 	}
 	return err
 }
+
+// The methods below back the JSON API. Reads pass through untouched; writes
+// are logged like the rest of the store.
+func (s *LoggingStore) ListComputersFiltered(filter ComputerFilter) ([]*Computer, error) {
+	return s.store.ListComputersFiltered(filter)
+}
+
+func (s *LoggingStore) CountComputersFiltered(filter ComputerFilter) (int, error) {
+	return s.store.CountComputersFiltered(filter)
+}
+
+func (s *LoggingStore) PendingRequestIDsForComputer(computerID int) ([]int, error) {
+	return s.store.PendingRequestIDsForComputer(computerID)
+}
+
+func (s *LoggingStore) ListSecretsFiltered(filter SecretFilter) ([]*Secret, error) {
+	return s.store.ListSecretsFiltered(filter)
+}
+
+func (s *LoggingStore) CountSecretsFiltered(filter SecretFilter) (int, error) {
+	return s.store.CountSecretsFiltered(filter)
+}
+
+func (s *LoggingStore) ListRequestsFiltered(filter RequestFilter) ([]*Request, error) {
+	return s.store.ListRequestsFiltered(filter)
+}
+
+func (s *LoggingStore) CountRequestsFiltered(filter RequestFilter) (int, error) {
+	return s.store.CountRequestsFiltered(filter)
+}
+
+func (s *LoggingStore) ListUsersFiltered(filter UserFilter) ([]*User, error) {
+	return s.store.ListUsersFiltered(filter)
+}
+
+func (s *LoggingStore) CountUsersFiltered(filter UserFilter) (int, error) {
+	return s.store.CountUsersFiltered(filter)
+}
+
+func (s *LoggingStore) SessionsRevokedAt(username string) (*time.Time, error) {
+	return s.store.SessionsRevokedAt(username)
+}
+
+func (s *LoggingStore) GetAPITokenByPrefix(prefix string) (*APIToken, error) {
+	return s.store.GetAPITokenByPrefix(prefix)
+}
+
+func (s *LoggingStore) GetAPITokenByID(id int) (*APIToken, error) {
+	return s.store.GetAPITokenByID(id)
+}
+
+func (s *LoggingStore) ListAPITokens() ([]*APIToken, error) {
+	return s.store.ListAPITokens()
+}
+
+func (s *LoggingStore) TouchAPIToken(id int, at time.Time, ip string) error {
+	return s.store.TouchAPIToken(id, at, ip)
+}
+
+func (s *LoggingStore) ListWebhooks() ([]*Webhook, error) {
+	return s.store.ListWebhooks()
+}
+
+func (s *LoggingStore) GetWebhook(id int) (*Webhook, error) {
+	return s.store.GetWebhook(id)
+}
+
+func (s *LoggingStore) AddWebhookDelivery(delivery WebhookDelivery) (*WebhookDelivery, error) {
+	return s.store.AddWebhookDelivery(delivery)
+}
+
+func (s *LoggingStore) ListWebhookDeliveries(webhookID, limit int) ([]*WebhookDelivery, error) {
+	return s.store.ListWebhookDeliveries(webhookID, limit)
+}
+
+func (s *LoggingStore) AddAuditEventDetailed(event AuditEvent) (*AuditEvent, error) {
+	return s.store.AddAuditEventDetailed(event)
+}
+
+func (s *LoggingStore) ListAuditEventsFiltered(filter AuditFilter) ([]*AuditEvent, error) {
+	return s.store.ListAuditEventsFiltered(filter)
+}
+
+func (s *LoggingStore) CountAuditEventsFiltered(filter AuditFilter) (int, error) {
+	return s.store.CountAuditEventsFiltered(filter)
+}
+
+func (s *LoggingStore) Stats(now time.Time, staleAfter time.Duration) (*Stats, error) {
+	return s.store.Stats(now, staleAfter)
+}
+
+func (s *LoggingStore) UpdateComputer(id int, username, computerName string) (*Computer, error) {
+	result, err := s.store.UpdateComputer(id, username, computerName)
+	if err != nil {
+		s.logger.Printf("db: UpdateComputer failed: id=%d username=%s error=%v", id, username, err)
+	} else {
+		s.logger.Printf("db: UpdateComputer: id=%d username=%s", id, username)
+	}
+	return result, err
+}
+
+func (s *LoggingStore) UpdateComputerMetadata(id int, platform, osVersion, agentVersion, hardwareUUID string) error {
+	err := s.store.UpdateComputerMetadata(id, platform, osVersion, agentVersion, hardwareUUID)
+	if err != nil {
+		s.logger.Printf("db: UpdateComputerMetadata failed: id=%d platform=%s error=%v", id, platform, err)
+	} else {
+		s.logger.Printf("db: UpdateComputerMetadata: id=%d platform=%s", id, platform)
+	}
+	return err
+}
+
+func (s *LoggingStore) DeleteComputer(id int) error {
+	err := s.store.DeleteComputer(id)
+	if err != nil {
+		s.logger.Printf("db: DeleteComputer failed: id=%d error=%v", id, err)
+	} else {
+		s.logger.Printf("db: DeleteComputer: id=%d", id)
+	}
+	return err
+}
+
+func (s *LoggingStore) DeleteSecret(id int) error {
+	err := s.store.DeleteSecret(id)
+	if err != nil {
+		s.logger.Printf("db: DeleteSecret failed: id=%d error=%v", id, err)
+	} else {
+		s.logger.Printf("db: DeleteSecret: id=%d", id)
+	}
+	return err
+}
+
+func (s *LoggingStore) RekeySecrets(next SecretCodec) (int, error) {
+	result, err := s.store.RekeySecrets(next)
+	if err != nil {
+		s.logger.Printf("db: RekeySecrets failed: updated=%d error=%v", result, err)
+	} else {
+		s.logger.Printf("db: RekeySecrets: updated=%d", result)
+	}
+	return result, err
+}
+
+func (s *LoggingStore) CancelRequest(id int) error {
+	err := s.store.CancelRequest(id)
+	if err != nil {
+		s.logger.Printf("db: CancelRequest failed: id=%d error=%v", id, err)
+	} else {
+		s.logger.Printf("db: CancelRequest: id=%d", id)
+	}
+	return err
+}
+
+func (s *LoggingStore) RevokeUserSessions(id int, at time.Time) error {
+	err := s.store.RevokeUserSessions(id, at)
+	if err != nil {
+		s.logger.Printf("db: RevokeUserSessions failed: id=%d error=%v", id, err)
+	} else {
+		s.logger.Printf("db: RevokeUserSessions: id=%d", id)
+	}
+	return err
+}
+
+func (s *LoggingStore) AddAPIToken(token APIToken) (*APIToken, error) {
+	result, err := s.store.AddAPIToken(token)
+	if err != nil {
+		s.logger.Printf("db: AddAPIToken failed: name=%s kind=%s prefix=%s error=%v", token.Name, token.Kind, token.Prefix, err)
+	} else {
+		s.logger.Printf("db: AddAPIToken: name=%s kind=%s prefix=%s", token.Name, token.Kind, token.Prefix)
+	}
+	return result, err
+}
+
+func (s *LoggingStore) RevokeAPIToken(id int, at time.Time) error {
+	err := s.store.RevokeAPIToken(id, at)
+	if err != nil {
+		s.logger.Printf("db: RevokeAPIToken failed: id=%d error=%v", id, err)
+	} else {
+		s.logger.Printf("db: RevokeAPIToken: id=%d", id)
+	}
+	return err
+}
+
+func (s *LoggingStore) AddWebhook(webhook Webhook) (*Webhook, error) {
+	result, err := s.store.AddWebhook(webhook)
+	if err != nil {
+		s.logger.Printf("db: AddWebhook failed: url=%s error=%v", webhook.URL, err)
+	} else {
+		s.logger.Printf("db: AddWebhook: url=%s", webhook.URL)
+	}
+	return result, err
+}
+
+func (s *LoggingStore) UpdateWebhook(id int, url string, events []string, active bool) (*Webhook, error) {
+	result, err := s.store.UpdateWebhook(id, url, events, active)
+	if err != nil {
+		s.logger.Printf("db: UpdateWebhook failed: id=%d url=%s error=%v", id, url, err)
+	} else {
+		s.logger.Printf("db: UpdateWebhook: id=%d url=%s", id, url)
+	}
+	return result, err
+}
+
+func (s *LoggingStore) DeleteWebhook(id int) error {
+	err := s.store.DeleteWebhook(id)
+	if err != nil {
+		s.logger.Printf("db: DeleteWebhook failed: id=%d error=%v", id, err)
+	} else {
+		s.logger.Printf("db: DeleteWebhook: id=%d", id)
+	}
+	return err
+}

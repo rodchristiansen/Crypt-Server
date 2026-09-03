@@ -57,4 +57,53 @@ type Store interface {
 	ImportRequest(id, secretID int, requestingUser string, approved *bool, authUser, reasonForRequest, reasonForApproval string, dateRequested time.Time, dateApproved *time.Time, current bool) error
 	// ImportUser inserts a user with a specific ID.
 	ImportUser(id int, username, passwordHash string, isStaff, canApprove, localLoginEnabled, mustResetPassword bool, authSource string) error
+
+	// The methods below back the JSON API.
+	// computers
+	ListComputersFiltered(filter ComputerFilter) ([]*Computer, error)
+	CountComputersFiltered(filter ComputerFilter) (int, error)
+	UpdateComputer(id int, username, computerName string) (*Computer, error)
+	UpdateComputerMetadata(id int, platform, osVersion, agentVersion, hardwareUUID string) error
+	DeleteComputer(id int) error
+	PendingRequestIDsForComputer(computerID int) ([]int, error)
+
+	// secrets
+	ListSecretsFiltered(filter SecretFilter) ([]*Secret, error)
+	CountSecretsFiltered(filter SecretFilter) (int, error)
+	DeleteSecret(id int) error
+	RekeySecrets(next SecretCodec) (int, error)
+
+	// requests
+	ListRequestsFiltered(filter RequestFilter) ([]*Request, error)
+	CountRequestsFiltered(filter RequestFilter) (int, error)
+	CancelRequest(id int) error
+
+	// users
+	ListUsersFiltered(filter UserFilter) ([]*User, error)
+	CountUsersFiltered(filter UserFilter) (int, error)
+	RevokeUserSessions(id int, at time.Time) error
+	SessionsRevokedAt(username string) (*time.Time, error)
+
+	// API tokens
+	AddAPIToken(token APIToken) (*APIToken, error)
+	GetAPITokenByPrefix(prefix string) (*APIToken, error)
+	GetAPITokenByID(id int) (*APIToken, error)
+	ListAPITokens() ([]*APIToken, error)
+	RevokeAPIToken(id int, at time.Time) error
+	TouchAPIToken(id int, at time.Time, ip string) error
+
+	// webhooks
+	AddWebhook(webhook Webhook) (*Webhook, error)
+	ListWebhooks() ([]*Webhook, error)
+	GetWebhook(id int) (*Webhook, error)
+	UpdateWebhook(id int, url string, events []string, active bool) (*Webhook, error)
+	DeleteWebhook(id int) error
+	AddWebhookDelivery(delivery WebhookDelivery) (*WebhookDelivery, error)
+	ListWebhookDeliveries(webhookID, limit int) ([]*WebhookDelivery, error)
+
+	// audit and reporting
+	AddAuditEventDetailed(event AuditEvent) (*AuditEvent, error)
+	ListAuditEventsFiltered(filter AuditFilter) ([]*AuditEvent, error)
+	CountAuditEventsFiltered(filter AuditFilter) (int, error)
+	Stats(now time.Time, staleAfter time.Duration) (*Stats, error)
 }

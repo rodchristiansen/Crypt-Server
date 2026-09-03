@@ -43,95 +43,61 @@ func NewSQLiteStoreWithDB(db *sql.DB, codec SecretCodec) *SQLiteStore {
 
 func (s *SQLiteStore) AddComputer(serial, username, computerName string) (*Computer, error) {
 	now := time.Now()
-	var id int
-	var lastCheckin time.Time
 	row := s.db.QueryRow(
-		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) RETURNING id, last_checkin",
+		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) RETURNING "+computerColumns,
 		serial, username, computerName, now,
 	)
-	if err := row.Scan(&id, &lastCheckin); err != nil {
+	computer, err := scanComputer(row)
+	if err != nil {
 		return nil, fmt.Errorf("insert computer: %w", err)
 	}
-	return &Computer{
-		ID:           id,
-		Serial:       serial,
-		Username:     username,
-		ComputerName: computerName,
-		LastCheckin:  lastCheckin,
-	}, nil
+	return computer, nil
 }
 
 func (s *SQLiteStore) UpsertComputer(serial, username, computerName string, lastCheckin time.Time) (*Computer, error) {
-	var id int
-	var stored time.Time
 	row := s.db.QueryRow(
-		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) ON CONFLICT(serial) DO UPDATE SET username = excluded.username, computername = excluded.computername, last_checkin = excluded.last_checkin RETURNING id, last_checkin",
+		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) ON CONFLICT(serial) DO UPDATE SET username = excluded.username, computername = excluded.computername, last_checkin = excluded.last_checkin RETURNING "+computerColumns,
 		serial, username, computerName, lastCheckin,
 	)
-	if err := row.Scan(&id, &stored); err != nil {
+	computer, err := scanComputer(row)
+	if err != nil {
 		return nil, fmt.Errorf("upsert computer: %w", err)
 	}
-	return &Computer{
-		ID:           id,
-		Serial:       serial,
-		Username:     username,
-		ComputerName: computerName,
-		LastCheckin:  stored,
-	}, nil
+	return computer, nil
 }
 
 func (s *SQLiteStore) ListComputers() ([]*Computer, error) {
-	rows, err := s.db.Query("SELECT id, serial, username, computername, last_checkin FROM computers ORDER BY id")
+	rows, err := s.db.Query("SELECT " + computerColumns + " FROM computers ORDER BY id")
 	if err != nil {
 		return nil, fmt.Errorf("list computers: %w", err)
 	}
 	defer rows.Close()
 
-	computers := make([]*Computer, 0)
-	for rows.Next() {
-		var computer Computer
-		var lastCheckin sql.NullTime
-		if err := rows.Scan(&computer.ID, &computer.Serial, &computer.Username, &computer.ComputerName, &lastCheckin); err != nil {
-			return nil, fmt.Errorf("scan computer: %w", err)
-		}
-		if lastCheckin.Valid {
-			computer.LastCheckin = lastCheckin.Time
-		}
-		computers = append(computers, &computer)
-	}
-	return computers, rows.Err()
+	return scanComputers(rows)
 }
 
 func (s *SQLiteStore) GetComputerByID(id int) (*Computer, error) {
-	var computer Computer
-	var lastCheckin sql.NullTime
-	row := s.db.QueryRow("SELECT id, serial, username, computername, last_checkin FROM computers WHERE id = ?", id)
-	if err := row.Scan(&computer.ID, &computer.Serial, &computer.Username, &computer.ComputerName, &lastCheckin); err != nil {
+	row := s.db.QueryRow("SELECT "+computerColumns+" FROM computers WHERE id = ?", id)
+	computer, err := scanComputer(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get computer by id: %w", err)
 	}
-	if lastCheckin.Valid {
-		computer.LastCheckin = lastCheckin.Time
-	}
-	return &computer, nil
+	return computer, nil
 }
 
 func (s *SQLiteStore) GetComputerBySerial(serial string) (*Computer, error) {
-	var computer Computer
-	var lastCheckin sql.NullTime
-	row := s.db.QueryRow("SELECT id, serial, username, computername, last_checkin FROM computers WHERE lower(serial) = lower(?)", serial)
-	if err := row.Scan(&computer.ID, &computer.Serial, &computer.Username, &computer.ComputerName, &lastCheckin); err != nil {
+	row := s.db.QueryRow("SELECT "+computerColumns+" FROM computers WHERE lower(serial) = lower(?)", serial)
+	computer, err := scanComputer(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get computer by serial: %w", err)
 	}
-	if lastCheckin.Valid {
-		computer.LastCheckin = lastCheckin.Time
-	}
-	return &computer, nil
+	return computer, nil
 }
 
 func (s *SQLiteStore) AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*Secret, bool, error) {

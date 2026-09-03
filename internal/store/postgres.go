@@ -39,101 +39,67 @@ func NewPostgresStoreWithDB(db *sql.DB, codec SecretCodec) *PostgresStore {
 }
 
 func (s *PostgresStore) AddComputer(serial, username, computerName string) (*Computer, error) {
-	var id int
-	var lastCheckin time.Time
-	err := s.db.QueryRow(
+	row := s.db.QueryRow(
 		`INSERT INTO computers (serial, username, computername, last_checkin)
 		 VALUES ($1, $2, $3, NOW())
-		 RETURNING id, last_checkin`,
+		 RETURNING `+computerColumns,
 		serial, username, computerName,
-	).Scan(&id, &lastCheckin)
+	)
+	computer, err := scanComputer(row)
 	if err != nil {
 		return nil, fmt.Errorf("insert computer: %w", err)
 	}
-	return &Computer{
-		ID:           id,
-		Serial:       serial,
-		Username:     username,
-		ComputerName: computerName,
-		LastCheckin:  lastCheckin,
-	}, nil
+	return computer, nil
 }
 
 func (s *PostgresStore) UpsertComputer(serial, username, computerName string, lastCheckin time.Time) (*Computer, error) {
-	var id int
-	var stored time.Time
-	err := s.db.QueryRow(
+	row := s.db.QueryRow(
 		`INSERT INTO computers (serial, username, computername, last_checkin)
 		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (serial)
 		 DO UPDATE SET username = EXCLUDED.username, computername = EXCLUDED.computername, last_checkin = EXCLUDED.last_checkin
-		 RETURNING id, last_checkin`,
+		 RETURNING `+computerColumns,
 		serial, username, computerName, lastCheckin,
-	).Scan(&id, &stored)
+	)
+	computer, err := scanComputer(row)
 	if err != nil {
 		return nil, fmt.Errorf("upsert computer: %w", err)
 	}
-	return &Computer{
-		ID:           id,
-		Serial:       serial,
-		Username:     username,
-		ComputerName: computerName,
-		LastCheckin:  stored,
-	}, nil
+	return computer, nil
 }
 
 func (s *PostgresStore) ListComputers() ([]*Computer, error) {
-	rows, err := s.db.Query(`SELECT id, serial, username, computername, last_checkin FROM computers ORDER BY id`)
+	rows, err := s.db.Query(`SELECT ` + computerColumns + ` FROM computers ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("list computers: %w", err)
 	}
 	defer rows.Close()
 
-	computers := make([]*Computer, 0)
-	for rows.Next() {
-		var computer Computer
-		var lastCheckin sql.NullTime
-		if err := rows.Scan(&computer.ID, &computer.Serial, &computer.Username, &computer.ComputerName, &lastCheckin); err != nil {
-			return nil, fmt.Errorf("scan computer: %w", err)
-		}
-		if lastCheckin.Valid {
-			computer.LastCheckin = lastCheckin.Time
-		}
-		computers = append(computers, &computer)
-	}
-	return computers, rows.Err()
+	return scanComputers(rows)
 }
 
 func (s *PostgresStore) GetComputerByID(id int) (*Computer, error) {
-	var computer Computer
-	var lastCheckin sql.NullTime
-	row := s.db.QueryRow(`SELECT id, serial, username, computername, last_checkin FROM computers WHERE id = $1`, id)
-	if err := row.Scan(&computer.ID, &computer.Serial, &computer.Username, &computer.ComputerName, &lastCheckin); err != nil {
+	row := s.db.QueryRow(`SELECT `+computerColumns+` FROM computers WHERE id = $1`, id)
+	computer, err := scanComputer(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get computer by id: %w", err)
 	}
-	if lastCheckin.Valid {
-		computer.LastCheckin = lastCheckin.Time
-	}
-	return &computer, nil
+	return computer, nil
 }
 
 func (s *PostgresStore) GetComputerBySerial(serial string) (*Computer, error) {
-	var computer Computer
-	var lastCheckin sql.NullTime
-	row := s.db.QueryRow(`SELECT id, serial, username, computername, last_checkin FROM computers WHERE lower(serial) = lower($1)`, serial)
-	if err := row.Scan(&computer.ID, &computer.Serial, &computer.Username, &computer.ComputerName, &lastCheckin); err != nil {
+	row := s.db.QueryRow(`SELECT `+computerColumns+` FROM computers WHERE lower(serial) = lower($1)`, serial)
+	computer, err := scanComputer(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("get computer by serial: %w", err)
 	}
-	if lastCheckin.Valid {
-		computer.LastCheckin = lastCheckin.Time
-	}
-	return &computer, nil
+	return computer, nil
 }
 
 func (s *PostgresStore) AddSecret(computerID int, secretType, secret string, rotationRequired bool) (*Secret, bool, error) {

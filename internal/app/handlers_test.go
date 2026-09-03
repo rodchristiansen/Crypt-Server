@@ -75,6 +75,7 @@ func (s *rotationTrackingStore) SetSecretRotationRequired(secretID int, rotation
 }
 
 type auditPaginationStore struct {
+	store.Store
 	lastLimit  int
 	lastOffset int
 }

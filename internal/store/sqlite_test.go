@@ -19,8 +19,8 @@ func TestSQLiteStoreAddComputer(t *testing.T) {
 	store := NewSQLiteStoreWithDB(db, codec)
 	lastCheckin := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) RETURNING id, last_checkin",
-	)).WithArgs("SERIAL", "user", "Mac", sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"id", "last_checkin"}).AddRow(1, lastCheckin))
+		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) RETURNING id, serial, username, computername, last_checkin, platform, os_version, agent_version, hardware_uuid",
+	)).WithArgs("SERIAL", "user", "Mac", sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin", "platform", "os_version", "agent_version", "hardware_uuid"}).AddRow(1, "SERIAL", "user", "Mac", lastCheckin, "", "", "", ""))
 
 	computer, err := store.AddComputer("SERIAL", "user", "Mac")
 	require.NoError(t, err)
@@ -60,8 +60,8 @@ func TestSQLiteStoreUpsertComputer(t *testing.T) {
 	store := NewSQLiteStoreWithDB(db, testCodec(t))
 	lastCheckin := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) ON CONFLICT(serial) DO UPDATE SET username = excluded.username, computername = excluded.computername, last_checkin = excluded.last_checkin RETURNING id, last_checkin",
-	)).WithArgs("SERIAL", "user", "Mac", lastCheckin).WillReturnRows(sqlmock.NewRows([]string{"id", "last_checkin"}).AddRow(1, lastCheckin))
+		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES (?, ?, ?, ?) ON CONFLICT(serial) DO UPDATE SET username = excluded.username, computername = excluded.computername, last_checkin = excluded.last_checkin RETURNING id, serial, username, computername, last_checkin, platform, os_version, agent_version, hardware_uuid",
+	)).WithArgs("SERIAL", "user", "Mac", lastCheckin).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin", "platform", "os_version", "agent_version", "hardware_uuid"}).AddRow(1, "SERIAL", "user", "Mac", lastCheckin, "", "", "", ""))
 
 	computer, err := store.UpsertComputer("SERIAL", "user", "Mac", lastCheckin)
 	require.NoError(t, err)
@@ -77,8 +77,8 @@ func TestSQLiteStoreListComputers(t *testing.T) {
 	store := NewSQLiteStoreWithDB(db, testCodec(t))
 	now := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"SELECT id, serial, username, computername, last_checkin FROM computers ORDER BY id",
-	)).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin"}).AddRow(1, "SERIAL", "user", "Mac", now))
+		"SELECT id, serial, username, computername, last_checkin, platform, os_version, agent_version, hardware_uuid FROM computers ORDER BY id",
+	)).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin", "platform", "os_version", "agent_version", "hardware_uuid"}).AddRow(1, "SERIAL", "user", "Mac", now, "macos", "26.1", "6.0.1", "uuid"))
 
 	computers, err := store.ListComputers()
 	require.NoError(t, err)
@@ -93,8 +93,8 @@ func TestSQLiteStoreGetComputerByID(t *testing.T) {
 
 	store := NewSQLiteStoreWithDB(db, testCodec(t))
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"SELECT id, serial, username, computername, last_checkin FROM computers WHERE id = ?",
-	)).WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin"}).AddRow(1, "SERIAL", "user", "Mac", time.Now()))
+		"SELECT id, serial, username, computername, last_checkin, platform, os_version, agent_version, hardware_uuid FROM computers WHERE id = ?",
+	)).WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin", "platform", "os_version", "agent_version", "hardware_uuid"}).AddRow(1, "SERIAL", "user", "Mac", time.Now(), "", "", "", ""))
 
 	computer, err := store.GetComputerByID(1)
 	require.NoError(t, err)

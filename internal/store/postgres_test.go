@@ -17,8 +17,8 @@ func TestPostgresStoreAddComputer(t *testing.T) {
 	store := NewPostgresStoreWithDB(db, testCodec(t))
 	lastCheckin := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES ($1, $2, $3, NOW()) RETURNING id, last_checkin",
-	)).WithArgs("SERIAL", "user", "Mac").WillReturnRows(sqlmock.NewRows([]string{"id", "last_checkin"}).AddRow(1, lastCheckin))
+		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES ($1, $2, $3, NOW()) RETURNING id, serial, username, computername, last_checkin, platform, os_version, agent_version, hardware_uuid",
+	)).WithArgs("SERIAL", "user", "Mac").WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin", "platform", "os_version", "agent_version", "hardware_uuid"}).AddRow(1, "SERIAL", "user", "Mac", lastCheckin, "", "", "", ""))
 
 	computer, err := store.AddComputer("SERIAL", "user", "Mac")
 	require.NoError(t, err)
@@ -44,8 +44,8 @@ func TestPostgresStoreUpsertComputer(t *testing.T) {
 	store := NewPostgresStoreWithDB(db, testCodec(t))
 	lastCheckin := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES ($1, $2, $3, $4) ON CONFLICT (serial) DO UPDATE SET username = EXCLUDED.username, computername = EXCLUDED.computername, last_checkin = EXCLUDED.last_checkin RETURNING id, last_checkin",
-	)).WithArgs("SERIAL", "user", "Mac", lastCheckin).WillReturnRows(sqlmock.NewRows([]string{"id", "last_checkin"}).AddRow(1, lastCheckin))
+		"INSERT INTO computers (serial, username, computername, last_checkin) VALUES ($1, $2, $3, $4) ON CONFLICT (serial) DO UPDATE SET username = EXCLUDED.username, computername = EXCLUDED.computername, last_checkin = EXCLUDED.last_checkin RETURNING id, serial, username, computername, last_checkin, platform, os_version, agent_version, hardware_uuid",
+	)).WithArgs("SERIAL", "user", "Mac", lastCheckin).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin", "platform", "os_version", "agent_version", "hardware_uuid"}).AddRow(1, "SERIAL", "user", "Mac", lastCheckin, "", "", "", ""))
 
 	computer, err := store.UpsertComputer("SERIAL", "user", "Mac", lastCheckin)
 	require.NoError(t, err)
@@ -61,8 +61,8 @@ func TestPostgresStoreListComputers(t *testing.T) {
 	store := NewPostgresStoreWithDB(db, testCodec(t))
 	now := time.Now()
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"SELECT id, serial, username, computername, last_checkin FROM computers ORDER BY id",
-	)).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin"}).AddRow(1, "SERIAL", "user", "Mac", now))
+		"SELECT id, serial, username, computername, last_checkin, platform, os_version, agent_version, hardware_uuid FROM computers ORDER BY id",
+	)).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin", "platform", "os_version", "agent_version", "hardware_uuid"}).AddRow(1, "SERIAL", "user", "Mac", now, "macos", "26.1", "6.0.1", "uuid"))
 
 	computers, err := store.ListComputers()
 	require.NoError(t, err)
@@ -77,8 +77,8 @@ func TestPostgresStoreGetComputerByID(t *testing.T) {
 
 	store := NewPostgresStoreWithDB(db, testCodec(t))
 	mock.ExpectQuery(regexp.QuoteMeta(
-		"SELECT id, serial, username, computername, last_checkin FROM computers WHERE id = $1",
-	)).WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin"}).AddRow(1, "SERIAL", "user", "Mac", time.Now()))
+		"SELECT id, serial, username, computername, last_checkin, platform, os_version, agent_version, hardware_uuid FROM computers WHERE id = $1",
+	)).WithArgs(1).WillReturnRows(sqlmock.NewRows([]string{"id", "serial", "username", "computername", "last_checkin", "platform", "os_version", "agent_version", "hardware_uuid"}).AddRow(1, "SERIAL", "user", "Mac", time.Now(), "", "", "", ""))
 
 	computer, err := store.GetComputerByID(1)
 	require.NoError(t, err)
