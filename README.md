@@ -135,6 +135,10 @@ All settings are configured via environment variables.
 
 - `REQUEST_RETENTION_DAYS` - How long an approved retrieval request stays current. Default: `7`.
 
+- `REVEAL_RATE_LIMIT` - How many secrets one caller may read per window before the API returns `429`. Set to `0` to disable. Default: `20`.
+
+- `REVEAL_RATE_WINDOW_SECONDS` - The window `REVEAL_RATE_LIMIT` applies over. Default: `60`.
+
 ## JSON API
 
 The server exposes a JSON API at `/api/v1/`. It covers escrow, computers, secrets, the

@@ -59,6 +59,9 @@ Mint the first one from the command line:
 - Errors return `{"error": {"code", "message", "details"}}` with a stable machine-readable `code`.
 - Unknown JSON fields are rejected, so a typo in a client payload is an error rather than a silent no-op.
 - Computers are addressable by id or serial: `/computers/538` and `/computers/by-serial/ABC123` are the same resource.
+- The two endpoints that return plaintext are rate limited per caller. Exceeding the limit
+  returns `429` with a `Retry-After` header and a `retry_after_seconds` detail. Metadata
+  reads are not limited.
 - A caller authenticated by session cookie must send the CSRF token in `X-CSRF-Token` on
   unsafe methods. Bearer callers are exempt, since a browser never attaches a bearer token
   on its own.
@@ -277,6 +280,9 @@ replacement key would otherwise have to travel over HTTP.
 Plaintext leaves the server through three paths only: `POST /requests/{id}/retrieve`,
 `GET /secrets/{id}/value`, and the existing HTML `/retrieve/`. The first two write their audit
 event before the response body, so a read is never served without its trail.
+
+Both are rate limited per caller, so a credential valid for one secret cannot drain the
+database in a loop faster than anyone reads the audit log.
 
 No list endpoint, CSV export, webhook payload or log line carries a secret. A device token
 cannot hold `secrets:reveal` or `secrets:read`, and the server rejects the grant rather than
