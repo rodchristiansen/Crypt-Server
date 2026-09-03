@@ -9,6 +9,9 @@
     <link rel="stylesheet" href="/static/dataTables/css/dataTables.bootstrap4.css" type="text/css" media="all" />
     <link rel="stylesheet" href="/static/bootstrap/css/bootstrap.min.css" type="text/css" media="all" />
     <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/dark-mode.css" type="text/css" media="all" />
+    <!-- Applied before first paint so the page does not flash the wrong theme. -->
+    <script src="/static/theme-toggle.js"></script>
     <style type="text/css">
       body {
         padding-top: 60px;
@@ -32,6 +35,12 @@
               <div class="collapse navbar-collapse" id="navbarColor01">
                 <ul class="navbar-nav ml-auto">
                 {{block "nav" .}}{{end}}
+                  <li class="nav-item">
+                      <button class="theme-toggle nav-link" type="button" aria-label="Toggle dark mode">
+                          <span class="icon-moon">&#9790;</span>
+                          <span class="icon-sun">&#9788;</span>
+                      </button>
+                  </li>
                   {{if .User.IsAuthenticated}}
                           <li class="dropdown nav-item"><a class="dropdown-toggle nav-link" id="dLabel" data-toggle="dropdown" data-target="#" href="#">
                           {{.User.Username}}

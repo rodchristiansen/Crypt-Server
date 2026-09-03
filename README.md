@@ -123,6 +123,14 @@ All settings are configured via environment variables.
 
 - `ROTATE_VIEWED_SECRETS` - Instruct compatible clients (Crypt 3.2.0+) to rotate and re-escrow secrets after viewing. Default: `false`.
 
+## Theme
+
+The interface follows the viewer's system preference and offers a toggle in the navigation
+bar that cycles auto, light and dark. The choice is stored per browser in `localStorage`;
+nothing about it reaches the server. `web/static/theme-toggle.js` is loaded in the document
+head so the stored preference is applied before first paint rather than flashing the wrong
+theme.
+
 ## Database migrations
 
 The Go server applies embedded SQL migrations on startup and records applied versions in `schema_migrations`.
