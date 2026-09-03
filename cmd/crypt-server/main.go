@@ -159,19 +159,35 @@ func main() {
 
 	var samlSP *samlsp.Middleware
 	var samlConfig *app.SAMLConfig
+	// A mounted config file wins; otherwise SAML_ENABLED configures SAML from
+	// the environment, which is how most container platforms deliver settings.
 	samlConfigPath := os.Getenv("SAML_CONFIG_FILE")
-	if samlConfigPath != "" {
-		cfg, err := app.LoadSAMLConfig(samlConfigPath)
+	var samlSource string
+	var cfg *app.SAMLConfig
+	switch {
+	case samlConfigPath != "":
+		loaded, err := app.LoadSAMLConfig(samlConfigPath)
 		if err != nil {
 			logger.Fatalf("invalid saml config: %v", err)
 		}
+		cfg = loaded
+		samlSource = samlConfigPath
+	case app.SAMLEnabledFromEnv():
+		loaded, err := app.LoadSAMLConfigFromEnv()
+		if err != nil {
+			logger.Fatalf("invalid saml config: %v", err)
+		}
+		cfg = loaded
+		samlSource = "environment"
+	}
+	if cfg != nil {
 		samlProvider, err := app.BuildSAMLProvider(cfg)
 		if err != nil {
 			logger.Fatalf("saml setup failed: %v", err)
 		}
 		samlSP = samlProvider
 		samlConfig = cfg
-		logger.Printf("saml enabled")
+		logger.Printf("saml enabled from %s", samlSource)
 	}
 
 	server := app.NewServer(dataStore, renderer, logger, sessionManager, csrfManager, samlSP, samlConfig, settings)

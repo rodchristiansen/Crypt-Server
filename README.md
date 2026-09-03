@@ -117,6 +117,8 @@ All settings are configured via environment variables.
 
 - `SAML_CONFIG_FILE` - Path to a YAML file containing SAML configuration. See `docs/saml-config.sample.yaml` for all supported fields.
 
+- `SAML_ENABLED` - Configure SAML from environment variables instead of a config file. See [docs/SAML-ENV.md](docs/SAML-ENV.md). Ignored when `SAML_CONFIG_FILE` is set. Default: `false`.
+
 - `APPROVE_OWN` - Allow users with approval permissions to approve their own key requests. Default: `false`.
 
 - `ALL_APPROVE` - Grant all users approval permissions when they log in. Default: `false`.
