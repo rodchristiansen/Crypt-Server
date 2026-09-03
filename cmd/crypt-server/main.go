@@ -154,6 +154,8 @@ func main() {
 		StaleAfter:             time.Duration(envInt("STALE_AFTER_DAYS", 30)) * 24 * time.Hour,
 		WebhooksEnabled:        envBool("WEBHOOKS_ENABLED", false),
 		RequestRetention:       time.Duration(envInt("REQUEST_RETENTION_DAYS", 7)) * 24 * time.Hour,
+		RevealRateLimit:        envInt("REVEAL_RATE_LIMIT", 20),
+		RevealRateWindow:       time.Duration(envInt("REVEAL_RATE_WINDOW_SECONDS", 60)) * time.Second,
 	}
 	csrfManager := app.NewCSRFManager("crypt_csrf", 32)
 

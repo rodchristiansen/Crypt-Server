@@ -27,6 +27,8 @@ type Server struct {
 	settings       Settings
 	// webhookClient is overridable so tests can capture deliveries.
 	webhookClient *http.Client
+	// revealLimiter throttles the endpoints that return plaintext.
+	revealLimiter *rateLimiter
 }
 
 func NewServer(store store.Store, renderer *Renderer, logger *log.Logger, sessionManager *SessionManager, csrfManager *CSRFManager, samlSP *samlsp.Middleware, samlConfig *SAMLConfig, settings Settings) *Server {
@@ -47,6 +49,10 @@ func NewServer(store store.Store, renderer *Renderer, logger *log.Logger, sessio
 	if server.settings.RequestRetention <= 0 {
 		server.settings.RequestRetention = 7 * 24 * time.Hour
 	}
+	if server.settings.RevealRateWindow <= 0 {
+		server.settings.RevealRateWindow = time.Minute
+	}
+	server.revealLimiter = newRateLimiter(server.settings.RevealRateLimit, server.settings.RevealRateWindow)
 	server.startRequestCleanupJob()
 	return server
 }

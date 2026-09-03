@@ -47,7 +47,7 @@ func (s *Server) apiRoutes() http.Handler {
 	// Secrets. Metadata is readable; the value has one scope of its own.
 	router.handle(http.MethodGet, "secrets", s.requireScope(store.ScopeSecretsRead, s.handleAPIListSecrets))
 	router.handle(http.MethodGet, "secrets/{id}", s.requireScope(store.ScopeSecretsRead, s.handleAPIGetSecret))
-	router.handle(http.MethodGet, "secrets/{id}/value", s.requireScope(store.ScopeSecretsReveal, s.handleAPIRevealSecret))
+	router.handle(http.MethodGet, "secrets/{id}/value", s.requireScope(store.ScopeSecretsReveal, s.limitReveal(s.handleAPIRevealSecret)))
 	router.handle(http.MethodPost, "secrets/{id}/rotation", s.requireScope(store.ScopeSecretsRotate, s.handleAPISetSecretRotation))
 	router.handle(http.MethodDelete, "secrets/{id}", s.requireScope(store.ScopeAdmin, s.handleAPIDeleteSecret))
 
@@ -57,7 +57,7 @@ func (s *Server) apiRoutes() http.Handler {
 	router.handle(http.MethodGet, "requests/{id}", s.requireScope(store.ScopeRequestsRead, s.handleAPIGetRequest))
 	router.handle(http.MethodPost, "requests/{id}/approve", s.requireScope(store.ScopeRequestsApprove, s.handleAPIApproveRequest))
 	router.handle(http.MethodPost, "requests/{id}/deny", s.requireScope(store.ScopeRequestsApprove, s.handleAPIDenyRequest))
-	router.handle(http.MethodPost, "requests/{id}/retrieve", s.requireScope(store.ScopeRequestsRead, s.handleAPIRetrieveRequest))
+	router.handle(http.MethodPost, "requests/{id}/retrieve", s.requireScope(store.ScopeRequestsRead, s.limitReveal(s.handleAPIRetrieveRequest)))
 	router.handle(http.MethodDelete, "requests/{id}", s.requireScope(store.ScopeRequestsWrite, s.handleAPICancelRequest))
 
 	// Users.

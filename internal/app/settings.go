@@ -22,4 +22,9 @@ type Settings struct {
 	WebhooksEnabled bool
 	// RequestRetention is how long an approved request stays current.
 	RequestRetention time.Duration
+	// RevealRateLimit is how many secrets one caller may read per
+	// RevealRateWindow. Zero disables limiting.
+	RevealRateLimit int
+	// RevealRateWindow is the window RevealRateLimit applies over.
+	RevealRateWindow time.Duration
 }
