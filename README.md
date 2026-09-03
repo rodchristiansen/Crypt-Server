@@ -158,6 +158,13 @@ NEW_FIELD_ENCRYPTION_KEY=$(./cryptctl gen-key) ./crypt-server -rekey
 ```
 
 Set `FIELD_ENCRYPTION_KEY` to the new key before restarting the server.
+## Theme
+
+The interface follows the viewer's system preference and offers a toggle in the navigation
+bar that cycles auto, light and dark. The choice is stored per browser in `localStorage`;
+nothing about it reaches the server. `web/static/theme-toggle.js` is loaded in the document
+head so the stored preference is applied before first paint rather than flashing the wrong
+theme.
 
 ## Database migrations
 
