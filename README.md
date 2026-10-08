@@ -100,6 +100,10 @@ python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 
 If `CRYPT_API_KEY` is not set, the endpoints remain open for backward compatibility with existing clients that don't support API key authentication.
 
+### Rotating the Key
+
+To change the key without failing clients that still send the old one, set the new key in `CRYPT_API_KEY` and the old key in `CRYPT_API_KEY_PREVIOUS`. Both are accepted while `CRYPT_API_KEY_PREVIOUS` is set, and every request made with the old key is logged. Once all clients send the new key, remove `CRYPT_API_KEY_PREVIOUS`.
+
 
 ## API Key Authentication
 
