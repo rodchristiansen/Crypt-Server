@@ -9,6 +9,10 @@ Configuration:
     Set the CRYPT_API_KEY environment variable to enable API key authentication.
     If not set, the endpoints remain open (backward compatible).
 
+    To rotate the key without failing clients that still hold the old one, set
+    CRYPT_API_KEY to the new key and CRYPT_API_KEY_PREVIOUS to the old key. Both
+    are accepted until CRYPT_API_KEY_PREVIOUS is removed.
+
 Usage:
     Clients must include the API key in the X-API-Key header:
     curl -X POST https://crypt.example.com/checkin/ \
@@ -35,7 +39,10 @@ class APIKeyAuthMiddleware:
     The API key is read from:
         1. CRYPT_API_KEY environment variable
         2. settings.CRYPT_API_KEY (if defined in settings.py)
-    
+
+    CRYPT_API_KEY_PREVIOUS (environment or settings) is accepted as well, for the
+    length of a key rotation. It has no effect unless CRYPT_API_KEY is set.
+
     If no API key is configured, requests are allowed through (backward compatible).
     """
     
@@ -48,27 +55,39 @@ class APIKeyAuthMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
         self.api_key = self._get_api_key()
-        
+        self.previous_api_key = self._get_api_key("CRYPT_API_KEY_PREVIOUS") if self.api_key else None
+
         if self.api_key:
             logger.info("API key authentication enabled for /checkin/ and /verify/ endpoints")
+            if self.previous_api_key:
+                logger.warning(
+                    "CRYPT_API_KEY_PREVIOUS is set: the previous API key is still accepted. "
+                    "Remove it once every client has the current key."
+                )
         else:
             logger.warning(
                 "No CRYPT_API_KEY configured. API endpoints are UNPROTECTED. "
                 "Set CRYPT_API_KEY environment variable to enable authentication."
             )
     
-    def _get_api_key(self):
-        """Get API key from environment or settings."""
+    def _get_api_key(self, name='CRYPT_API_KEY'):
+        """Get an API key from environment or settings, or None when unset or blank."""
         # Try environment variable first
-        api_key = os.environ.get('CRYPT_API_KEY')
-        if api_key:
+        api_key = os.environ.get(name)
+        if api_key and api_key.strip():
             return api_key.strip()
-        
+
         # Fall back to settings
-        if hasattr(settings, 'CRYPT_API_KEY'):
-            return getattr(settings, 'CRYPT_API_KEY', '').strip()
-        
-        return None
+        return (getattr(settings, name, '') or '').strip() or None
+
+    def _is_valid_key(self, request_api_key, path):
+        """Constant-time comparison against the current key and, during a rotation, the previous one."""
+        valid = hmac.compare_digest(request_api_key.encode(), self.api_key.encode())
+        if self.previous_api_key:
+            if hmac.compare_digest(request_api_key.encode(), self.previous_api_key.encode()):
+                logger.info("Previous API key used for %s", path)
+                valid = True
+        return valid
     
     def _is_protected_path(self, path):
         """Check if the request path requires API key authentication."""
@@ -99,7 +118,7 @@ class APIKeyAuthMiddleware:
                 )
             
             # Validate API key (constant-time comparison to prevent timing attacks)
-            if not hmac.compare_digest(request_api_key, self.api_key):
+            if not self._is_valid_key(request_api_key, request.path):
                 logger.warning(
                     "Invalid API key for %s from %s",
                     request.path,
